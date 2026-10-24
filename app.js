@@ -50,24 +50,44 @@ function opponentSuggestions(value=''){
   const q=upper(value).trim();
   return knownOpponents().filter(n=>!q||n.includes(q)).slice(0,30);
 }
+// Il menu viene spostato nel body: evita i tagli dovuti a overflow/transform su iOS.
+function opponentMenu(){
+  const box=document.getElementById('opponent-suggestions');
+  if(box&&box.parentElement!==document.body)document.body.appendChild(box);
+  return box;
+}
+function positionOpponentMenu(){
+  const input=$('#opponent'),box=opponentMenu();
+  if(!input||!box||box.style.display==='none')return;
+  const r=input.getBoundingClientRect();
+  const vv=window.visualViewport;
+  const viewTop=vv?vv.offsetTop:0;
+  const viewHeight=vv?vv.height:window.innerHeight;
+  const viewBottom=viewTop+viewHeight;
+  const spaceBelow=viewBottom-r.bottom;
+  const spaceAbove=r.top-viewTop;
+  const above=spaceBelow<135&&spaceAbove>spaceBelow;
+  const available=Math.max(70,(above?spaceAbove:spaceBelow)-8);
+  const h=Math.min(220,available);
+  Object.assign(box.style,{
+    position:'fixed',left:Math.max(6,r.left)+'px',
+    top:(above?Math.max(viewTop+4,r.top-h-4):r.bottom+3)+'px',
+    width:Math.min(r.width,window.innerWidth-12)+'px',maxHeight:h+'px',
+    overflowY:'auto',webkitOverflowScrolling:'touch',
+    zIndex:'2147483647',background:'#24151d',border:'1px solid #54313e',
+    borderRadius:'10px',boxShadow:'0 10px 25px #0008',
+    boxSizing:'border-box',transform:'none'
+  });
+}
 function refreshOpponentSuggestions(show=true){
-  const input=$('#opponent'),box=$('#opponent-suggestions');
+  const input=$('#opponent'),box=opponentMenu();
   if(!input||!box)return;
   const suggestions=opponentSuggestions(input.value);
   box.innerHTML=suggestions.map(n=>`<button type="button" data-opponent="${esc(n)}" style="display:block;width:100%;text-align:left;padding:12px;background:#24151d;color:#fff;border:0;border-bottom:1px solid #54313e;font:inherit">${esc(n)}</button>`).join('');
   box.style.display=show&&suggestions.length?'block':'none';
-  // Su iPhone il menu non deve essere nascosto dai campi sottostanti.
-  if(show&&suggestions.length){
-    const r=input.getBoundingClientRect();
-    const below=window.innerHeight-r.bottom;
-    const height=Math.min(210,Math.max(110,window.innerHeight*0.32));
-    const above=below<130&&r.top>below;
-    box.style.position='fixed';
-    box.style.left=Math.max(6,r.left)+'px';
-    box.style.width=Math.min(r.width,window.innerWidth-12)+'px';
-    box.style.top=(above?Math.max(6,r.top-height):r.bottom+3)+'px';
-    box.style.maxHeight=height+'px';
-    box.style.zIndex='2147483647';
+  if(box.style.display==='block'){
+    positionOpponentMenu();
+    requestAnimationFrame(positionOpponentMenu);
   }
   box.querySelectorAll('[data-opponent]').forEach(b=>{
     b.addEventListener('pointerdown',e=>e.preventDefault());
@@ -107,6 +127,11 @@ function bindMatchText(){
         if(document.activeElement===input)refreshOpponentSuggestions(true);
       }finally{opponentFetchInProgress=false}
     };
+    const updatePosition=()=>positionOpponentMenu();
+    window.addEventListener('resize',updatePosition,{signal:opponentDropdownController.signal});
+    window.addEventListener('scroll',updatePosition,{capture:true,passive:true,signal:opponentDropdownController.signal});
+    window.visualViewport?.addEventListener('resize',updatePosition,{signal:opponentDropdownController.signal});
+    window.visualViewport?.addEventListener('scroll',updatePosition,{signal:opponentDropdownController.signal});
     input.addEventListener('focus',openOpponents);
     input.addEventListener('click',openOpponents);
     input.addEventListener('keydown',e=>{if(e.key==='Escape')box.style.display='none'});
@@ -127,7 +152,7 @@ function login(force=false){app.innerHTML=`<main class="login"><div class="login
 $('#loginform').onsubmit=async e=>{e.preventDefault();$('#autherror').textContent='';try{if(!sb)throw Error('Collega Supabase per attivare il login');if(force){if(val('newpass').length<10)throw Error('Password di almeno 10 caratteri');if(val('newpass')!==val('confirm'))throw Error('Le password non coincidono');await adminCall({action:'change-password',password:val('newpass')});page='home';editing=null;draft=null;selected=[];await load();}else{const uname=val('username').toLowerCase();const email=uname.includes('@')?uname:uname+'@users.volla.invalid';const {error}=await sb.auth.signInWithPassword({email,password:val('password')});if(error)throw Error('Credenziali non valide');try{if($('#remember-login')?.checked)localStorage.setItem(rememberedUserKey,uname);else localStorage.removeItem(rememberedUserKey)}catch{}page='home';editing=null;draft=null;selected=[];await load();}}catch(err){$('#autherror').textContent=err.message}}}
 async function query(table,cols='*'){const {data,error}=await sb.from(table).select(cols);if(error)throw error;return data||[]}
 async function load(){try{const {data:{user}}=await sb.auth.getUser();if(!user){me=null;login();return}const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error)throw error;me=data;if(me.must_change_password){page='home';login(true);return}cats=await query('categories');access=await query('coach_categories');players=await query('players');matches=await query('matches');await loadOpponents();const mp=await query('match_players');matches.forEach(m=>m.player_ids=mp.filter(x=>x.match_id===m.id).sort((a,b)=>a.sort_order-b.sort_order).map(x=>x.player_id));users=me.role==='admin'?await query('profiles'):[];if(!permitted().includes(currentCat))currentCat=permitted()[0]||'';render()}catch(e){toast(e.message);console.error(e)}}
-function render(){app.innerHTML=`<main class="shell">${nav()}<div id="content"></div><footer class="foot">#weL⚽ve VOLLAUNITED 🔥</footer></main>`;let c=$('#content');if(page==='home')c.innerHTML=home();if(page==='players')c.innerHTML=roster();if(page==='matches')c.innerHTML=matchEditor();if(page==='history')c.innerHTML=history();if(page==='admin')c.innerHTML=admin();bind()}
+function render(){document.getElementById('opponent-suggestions')?.remove();app.innerHTML=`<main class="shell">${nav()}<div id="content"></div><footer class="foot">#weL⚽ve VOLLAUNITED 🔥</footer></main>`;let c=$('#content');if(page==='home')c.innerHTML=home();if(page==='players')c.innerHTML=roster();if(page==='matches')c.innerHTML=matchEditor();if(page==='history')c.innerHTML=history();if(page==='admin')c.innerHTML=admin();bind()}
 const home=()=>`<section class="hero"><div><div class="sub">BENVENUTO NEL CLUB</div><h2>Ciao, ${esc(me.full_name)}! 🔥</h2><p>${me.role==='admin'?'Gestisci la società. Convocazioni abilitate soltanto per le tue categorie autorizzate.':'La tua squadra, le tue convocazioni.'}</p></div></section><div class="grid">${[['players','👥','Calciatori','Gestisci la rosa'],['matches','📋','Convocazioni','Prepara la partita'],['history','🏟','Storico','Le gare precedenti'],[me.role==='admin'?'admin':'players','🛡️',me.role==='admin'?'Amministrazione':'Categorie','Gestione società']].map(([p,i,t,s])=>`<button class="tile" data-page="${p}"><span class="emoji">${i}</span><b>${t}</b><span>${s}</span></button>`).join('')}</div><section class="panel"><h3>Le tue categorie</h3>${cats.filter(c=>permitted().includes(c.id)).map(c=>`<div class="item"><strong>${esc(c.name)}</strong><small>${allowed(c.id,'convocate')?'✓ Puoi convocare':'Solo visualizzazione'} · ${players.filter(p=>p.category_id===c.id).length} calciatori</small></div>`).join('')||'<p class="empty">Nessuna categoria assegnata</p>'}</section>`;
 const catSelector=(ids=permitted())=>`<div class="field"><label>Categoria</label><select id="category">${categoryOptions(ids)}</select></div>`;
 const roster=()=>`<div class="row sectionhead"><h2>⚽ Calciatori</h2><button class="btn sm" data-action="new-player">+ Nuovo</button></div>${catSelector()}<div id="playerform"></div><section class="panel"><h3>Rosa ${esc(selectedCategory()?.name||'')}</h3>${players.filter(p=>p.category_id===currentCat).sort(sortPlayers).map(p=>`<div class="item row"><div><strong>${esc(p.last_name)} ${esc(p.first_name)} ${p.jersey_number?'#'+esc(p.jersey_number):''}</strong><small>${esc(p.primary_role||'Ruolo non indicato')}${p.secondary_role?' · '+esc(p.secondary_role):''}</small></div><div class="actions"><button class="btn alt sm" data-action="edit-player" data-id="${p.id}">Modifica</button><button class="btn alt sm" data-action="delete-player" data-id="${p.id}">✕</button></div></div>`).join('')||'<p class="empty">Nessun calciatore presente</p>'}</section>`;
