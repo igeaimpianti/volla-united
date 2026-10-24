@@ -202,15 +202,42 @@ function attendancePage(){
   return `<h2>✅ Presenze allenamenti</h2>${catSelector()}<section class="panel"><h3>Registro allenamento</h3>${field('training-date','Data allenamento',attendanceDate,'date')}
     <p class="muted">${sess?'Allenamento già registrato: puoi aggiornare le presenze.':'Nuovo allenamento: seleziona i presenti e salva.'}</p>
     <div class="stack">${ps.map(p=>`<label class="check" style="display:flex;align-items:center;gap:12px"><input type="checkbox" data-attend="${esc(p.id)}" ${rows.find(r=>r.player_id===p.id)?.present?'checked':''} ${!editable?'disabled':''}><span>${esc(fullName(p))}</span></label>`).join('')||'<p class="empty">Nessun calciatore nella categoria</p>'}</div>
-    ${editable?'<div class="actions"><button class="btn" id="save-attendance">💾 Salva presenze</button></div>':''}</section>
+    ${editable?'<div class="actions"><button class="btn" id="save-attendance">💾 Salva presenze</button>'+(sess?'<button class="btn alt" id="delete-attendance-day" type="button">🗑 Elimina questo allenamento</button>':'')+'</div>':''}</section>
     <section class="panel"><h3>Statistiche e PDF</h3><div class="fields">${field('att-from','Dal',from,'date')}${field('att-to','Al',to,'date')}
     <div class="field"><label>Allievo</label><select id="att-player"><option value="">Tutti gli allievi</option>${ps.map(p=>`<option value="${esc(p.id)}" ${attendancePlayer===p.id?'selected':''}>${esc(fullName(p))}</option>`).join('')}</select></div></div>
     <div class="actions"><button class="btn alt sm" data-period="week">Settimana</button><button class="btn alt sm" data-period="month">Mese</button><button class="btn alt sm" data-period="year">Anno</button><button class="btn alt sm" data-period="all">Tutto</button></div>
-    <div class="item"><strong>${filtered.length} allenamenti registrati nel periodo</strong><small>Le assenze si contano solo per le sessioni in cui è stata registrata una presenza o assenza per l'allievo.</small></div>
+    <details class="panel" style="margin:12px 0" id="training-session-list"><summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0"><span><strong>${filtered.length} allenamenti registrati nel periodo</strong><small style="display:block;margin-top:6px">Clicca per visualizzare le date e gestire gli allenamenti.</small></span><span aria-hidden="true" style="font-size:21px">⌄</span></summary><p class="muted">Le assenze si contano solo per le sessioni in cui è stata registrata una presenza o assenza per l'allievo.</p>${filtered.length?`<div class="stack">${filtered.map(t=>`<div class="item row" style="gap:12px;align-items:center;justify-content:space-between"><strong>${esc(dateIt(t.training_date))}</strong>${editable?`<button type="button" class="btn alt sm" data-remove-training="${esc(t.id)}">🗑 Elimina</button>`:''}</div>`).join('')}</div>`:'<p class="empty">Nessun allenamento nel periodo selezionato.</p>'}${editable&&filtered.length>1?`<details style="margin-top:12px"><summary style="cursor:pointer">Elimina più allenamenti</summary><div class="stack">${filtered.map(t=>`<label class="check" style="display:flex;align-items:center;gap:10px"><input type="checkbox" data-delete-session="${esc(t.id)}"><span>${esc(dateIt(t.training_date))}</span></label>`).join('')}</div><div class="actions"><button type="button" class="btn alt" id="delete-attendance-selected">🗑 Elimina date selezionate</button></div></details>`:''}</details>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Allievo</th><th>P</th><th>A</th><th>%</th></tr></thead><tbody>${stats.map(x=>`<tr><td style="padding:9px 3px">${esc(fullName(x.p))}</td><td align="center">${x.present}</td><td align="center">${x.absent}</td><td align="center">${x.percentage}%</td></tr>`).join('')}</tbody></table></div>
     <div class="actions"><button class="btn" id="print-attendance">📄 Genera PDF presenze</button></div></section>`;
 }
+async function deleteTrainingSessions(ids){
+  const valid=sessions.filter(t=>ids.includes(t.id)&&t.category_id===currentCat);
+  if(valid.length!==ids.length||!valid.length)return toast('Seleziona allenamenti validi della categoria');
+  if(!(me.role==='admin'||access.some(a=>a.category_id===currentCat)))return toast('Non autorizzato');
+  const dates=valid.map(t=>dateIt(t.training_date)).join(', ');
+  if(!confirm(`Eliminare definitivamente ${valid.length} allenamento/i (${dates}) e tutte le presenze e assenze collegate? Questa operazione non si può annullare.`))return;
+  try{
+    // ON DELETE CASCADE elimina le righe training_attendance collegate.
+    const {data,error}=await sb.from('training_sessions').delete().in('id',ids).eq('category_id',currentCat).select('id');
+    if(error)throw error;
+    if((data||[]).length!==ids.length)throw Error('Eliminazione non completata: controlla i permessi Supabase');
+    await loadAttendance();render();toast('Allenamenti eliminati: '+ids.length);
+  }catch(err){toast('Errore eliminazione: '+err.message)}
+}
 function bindAttendance(){
+  document.querySelectorAll('[data-remove-training]').forEach(btn=>btn.addEventListener('click',()=>{
+    deleteTrainingSessions([btn.dataset.removeTraining]);
+  }));
+
+  $('#delete-attendance-day')?.addEventListener('click',()=>{
+    const t=sessions.find(x=>x.category_id===currentCat&&x.training_date===attendanceDate);
+    if(t)deleteTrainingSessions([t.id]);
+  });
+  $('#delete-attendance-selected')?.addEventListener('click',()=>{
+    const ids=[...document.querySelectorAll('[data-delete-session]:checked')].map(x=>x.dataset.deleteSession);
+    if(!ids.length)return toast('Seleziona almeno una data');
+    deleteTrainingSessions(ids);
+  });
   $('#training-date')?.addEventListener('change',e=>{attendanceDate=e.target.value;render()});
   $('#att-from')?.addEventListener('change',e=>{attendanceFrom=e.target.value;render()});
   $('#att-to')?.addEventListener('change',e=>{attendanceTo=e.target.value;render()});
@@ -228,6 +255,16 @@ function bindAttendance(){
       const ps=players.filter(p=>p.category_id===currentCat);
       if(!ps.length)throw Error('Non ci sono allievi');
       let sess=sessions.find(x=>x.category_id===currentCat&&x.training_date===attendanceDate);
+      const anyPresent=ps.some(p=>document.querySelector(`[data-attend="${p.id}"]`)?.checked);
+      if(!anyPresent){
+        if(sess){
+          await deleteTrainingSessions([sess.id]);
+        }else{
+          toast('Nessuna presenza selezionata: allenamento non creato');
+        }
+        btn.disabled=false;
+        return;
+      }
       if(!sess){const r=await sb.from('training_sessions').insert({category_id:currentCat,training_date:attendanceDate,created_by:me.id}).select('id').single();if(r.error)throw r.error;sess=r.data}
       const data=ps.map(p=>({session_id:sess.id,player_id:p.id,present:!!document.querySelector(`[data-attend="${p.id}"]`)?.checked}));
       const r=await sb.from('training_attendance').upsert(data,{onConflict:'session_id,player_id'});if(r.error)throw r.error;
