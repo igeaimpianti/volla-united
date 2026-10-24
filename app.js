@@ -25,11 +25,18 @@ function rememberOpponent(name){
   try{localStorage.setItem(opponentKey,JSON.stringify([...new Set([...knownOpponents(),n])].slice(-250)))}catch(e){console.warn('Salvataggio locale avversari:',e)}
 }
 async function loadOpponents(){
+  if(!sb)return [];
   const {data,error}=await sb.from('opponents').select('name').order('name');
-  if(error){console.warn('Impossibile caricare avversari Supabase:',error.message);toast('Avversari: '+error.message);return}
-  serverOpponents=(data||[]).map(x=>upper(x.name).trim()).filter(Boolean);
+  if(error){
+    console.error('Lettura avversari Supabase:',error);
+    toast('Errore caricamento avversari: '+error.message);
+    return [];
+  }
+  serverOpponents=[...new Set((data||[]).map(x=>upper(x.name).trim()).filter(Boolean))];
   refreshOpponentSuggestions(document.activeElement?.id==='opponent');
+  return serverOpponents;
 }
+
 async function saveOpponentToSupabase(name){
   const n=upper(name).trim();
   if(!n)return;
@@ -44,18 +51,34 @@ function opponentSuggestions(value=''){
   return knownOpponents().filter(n=>!q||n.includes(q)).slice(0,30);
 }
 function refreshOpponentSuggestions(show=true){
-  const input=$('#opponent'), box=$('#opponent-suggestions');
+  const input=$('#opponent'),box=$('#opponent-suggestions');
   if(!input||!box)return;
   const suggestions=opponentSuggestions(input.value);
   box.innerHTML=suggestions.map(n=>`<button type="button" data-opponent="${esc(n)}" style="display:block;width:100%;text-align:left;padding:12px;background:#24151d;color:#fff;border:0;border-bottom:1px solid #54313e;font:inherit">${esc(n)}</button>`).join('');
   box.style.display=show&&suggestions.length?'block':'none';
-  box.querySelectorAll('[data-opponent]').forEach(b=>b.addEventListener('pointerdown',e=>e.preventDefault()));
-  box.querySelectorAll('[data-opponent]').forEach(b=>b.addEventListener('click',()=>{
-    input.value=b.dataset.opponent;
-    box.style.display='none';
-    input.focus();
-  }));
+  // Su iPhone il menu non deve essere nascosto dai campi sottostanti.
+  if(show&&suggestions.length){
+    const r=input.getBoundingClientRect();
+    const below=window.innerHeight-r.bottom;
+    const height=Math.min(210,Math.max(110,window.innerHeight*0.32));
+    const above=below<130&&r.top>below;
+    box.style.position='fixed';
+    box.style.left=Math.max(6,r.left)+'px';
+    box.style.width=Math.min(r.width,window.innerWidth-12)+'px';
+    box.style.top=(above?Math.max(6,r.top-height):r.bottom+3)+'px';
+    box.style.maxHeight=height+'px';
+    box.style.zIndex='2147483647';
+  }
+  box.querySelectorAll('[data-opponent]').forEach(b=>{
+    b.addEventListener('pointerdown',e=>e.preventDefault());
+    b.addEventListener('click',()=>{
+      input.value=b.dataset.opponent;
+      box.style.display='none';
+      input.focus();
+    });
+  });
 }
+
 function bindMatchText(){
   if(!$('#matchform'))return;
   opponentDropdownController.abort();opponentDropdownController=new AbortController();
@@ -73,10 +96,21 @@ function bindMatchText(){
   if(input&&box){
     input.setAttribute('autocomplete','off');
     input.setAttribute('aria-autocomplete','list');
-    input.addEventListener('focus',()=>refreshOpponentSuggestions(true));
-    input.addEventListener('click',()=>refreshOpponentSuggestions(true));
+    // Rileggi Supabase a ogni apertura, anche se la PWA era rimasta in background.
+    let opponentFetchInProgress=false;
+    const openOpponents=async()=>{
+      refreshOpponentSuggestions(true);
+      if(opponentFetchInProgress)return;
+      opponentFetchInProgress=true;
+      try{
+        await loadOpponents();
+        if(document.activeElement===input)refreshOpponentSuggestions(true);
+      }finally{opponentFetchInProgress=false}
+    };
+    input.addEventListener('focus',openOpponents);
+    input.addEventListener('click',openOpponents);
     input.addEventListener('keydown',e=>{if(e.key==='Escape')box.style.display='none'});
-    input.addEventListener('blur',()=>setTimeout(()=>{box.style.display='none'},180));
+    input.addEventListener('blur',()=>setTimeout(()=>{box.style.display='none'},250));
     document.addEventListener('pointerdown',e=>{if(!input.contains(e.target)&&!box.contains(e.target))box.style.display='none'},{signal:opponentDropdownController.signal});
     refreshOpponentSuggestions(false);
   }
