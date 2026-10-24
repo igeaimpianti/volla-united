@@ -1,1 +1,51 @@
-const CACHE='volla-united-v1';const ASSETS=['./','./index.html','./style.css','./app.js','./config.js','./logo.png','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==self.location.origin)return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))});
+/* Volla United — aggiornamento rapido PWA */
+const CACHE = 'volla-united-v2';
+const CORE = ['./', './index.html', './style.css', './app.js', './config.js'];
+const OPTIONAL = ['./logo.png', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+
+self.addEventListener('install', event => {
+  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.allSettled([...CORE, ...OPTIONAL].map(async path => {
+      const response = await fetch(new Request(path, {cache: 'reload'}));
+      if (response.ok) await cache.put(path, response);
+    }));
+  })());
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith('volla-united-') && key !== CACHE).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // Non intercettare richieste ad altri percorsi dello stesso dominio GitHub Pages.
+  if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    try {
+      // Network-first: non blocca gli aggiornamenti di app.js, HTML o CSS.
+      const response = await fetch(new Request(request, {cache: 'no-store'}));
+      if (response.ok && response.type === 'basic') {
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch (error) {
+      const cached = await cache.match(request, {ignoreSearch: true});
+      if (cached) return cached;
+      if (request.mode === 'navigate') {
+        const fallback = await cache.match('./index.html');
+        if (fallback) return fallback;
+      }
+      return Response.error();
+    }
+  })());
+});
