@@ -1,1 +1,25 @@
-{"name":"Volla United – Team Management","short_name":"Volla United","description":"Gestione categorie e convocazioni Volla United","start_url":"./","scope":"./","display":"standalone","background_color":"#100b0f","theme_color":"#a80922","icons":[{"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
+
+{
+  "name": "Volla United - Team Management",
+  "short_name": "Volla United",
+  "description": "Gestione calciatori, mister e convocazioni",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#100b0f",
+  "theme_color": "#100b0f",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
