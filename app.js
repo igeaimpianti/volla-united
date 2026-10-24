@@ -272,25 +272,48 @@ async function generateDistinta(m){
  if(!response.ok)throw Error('Carica distinta-template.pdf nella stessa cartella di app.js su GitHub');
  const pdf=await PDFDocument.load(await response.arrayBuffer());const page=pdf.getPages()[0];
  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
- const W=page.getWidth(),H=page.getHeight(),scale=W/768;
+ const W=page.getWidth(),H=page.getHeight();
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
- const write=(v,x,y,size=8,max=100,heavy=false)=>{let t=clean(v);if(!t)return;const ft=heavy?bold:font;const fs=size*scale;while(t.length&&ft.widthOfTextAtSize(t,fs)>max*scale)t=t.slice(0,-1);page.drawText(t,{x:x*scale,y:H-y*scale,size:fs,font:ft,color:rgb(0,0,0)})};
+ // Coordinate REALI A4 del modello (595.32 x 841.92), non coordinate dello screenshot.
+ const sx=W/595.32,sy=H/841.92;
+ const write=(v,x,top,size=8,max=100,heavy=false)=>{
+   let t=clean(v);if(!t)return;
+   const ft=heavy?bold:font,fs=size*sx;
+   while(t.length&&ft.widthOfTextAtSize(t,fs)>max*sx)t=t.slice(0,-1);
+   page.drawText(t,{x:x*sx,y:H-top*sy,size:fs,font:ft,color:rgb(0,0,0)});
+ };
  const value=k=>val('df-'+k);
- // Coordinate in riferimento alla pagina originale 768 x 1088.
- if(value('heading')){page.drawRectangle({x:24*scale,y:H-192*scale,width:720*scale,height:26*scale,color:rgb(1,1,1)});write(value('heading'),27,184,12,712,true)}
- write(value('competition'),92,218,10,92);write(value('place'),291,218,10,170);
- write(fmtItalian(value('date')),492,218,10,115);write(value('time'),658,218,10,85);
- const ids=m.player_ids||[];if(ids.length>20)throw Error('Il modello ha 20 righe giocatori: riduci i convocati prima di esportare');
- ids.forEach((id,i)=>{const p=players.find(x=>x.id===id);if(!p)return;const d=detailOf(id),y=289+i*25;
- write(p.jersey_number??'',20,y,11,48,true);
- const parts=(p.birth_date||'').split('-');if(parts.length===3){write(parts[2],78,y,10,31);write(parts[1],118,y,10,30);write(parts[0],154,y,10,39)}
- write((p.last_name||'')+' '+(p.first_name||''),197,y,10,204);
- write(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',407,y,9,43,true);
- write(d.figc_number||'',475,y,9,80);
- if(d.identity_number){write('C.I.',563,y,9,42);write(d.identity_number,612,y,9,134)}
+ // Il titolo libero viene inserito nello spazio già previsto, senza coprire la tabella.
+ if(value('heading')){
+   page.drawRectangle({x:34*sx,y:H-148*sy,width:527*sx,height:16*sy,color:rgb(1,1,1)});
+   write(value('heading'),36,144,9,520,true);
+ }
+ // Riga campionato: testo DOPO le etichette stampate.
+ write(value('competition'),86,172,7,74);
+ write(value('place'),231,172,7,132);
+ write(fmtItalian(value('date')),389,172,7,78);
+ write(value('time'),514,172,7,49);
+ const ids=m.player_ids||[];
+ if(ids.length>20)throw Error('Il modello contiene 20 righe: riduci i convocati prima di esportare');
+ ids.forEach((id,i)=>{
+   const p=players.find(x=>x.id===id);if(!p)return;
+   const d=detailOf(id);
+   // 20 righe, centrate verticalmente tra le linee della tabella.
+   const top=235.5+i*19.8;
+   write(p.jersey_number??'',35,top,8,31,true);
+   const parts=(p.birth_date||'').split('-');
+   if(parts.length===3){write(parts[2],77,top,8,20);write(parts[1],106,top,8,20);write(parts[0],132,top,8,26)}
+   write((p.last_name||'')+' '+(p.first_name||''),164,top,8,145);
+   write(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',315,top,7,31,true);
+   write(d.figc_number||'',365,top,7,57);
+   if(d.identity_number){write('C.I.',431,top,7,27);write(d.identity_number,465,top,7,95)}
  });
- const staff=[['assistant',819],['accompanying',840],['referee_officer',861],['coach',882],['doctor',903],['masseur',924]];
- for(const [key,y] of staff){write(value(key),200,y,10,260);write(value(key+'_doc'),490,y,9,250)}
+ // Nomi staff dentro la colonna centrale; documenti nella colonna a destra.
+ const staff=[['assistant',641],['accompanying',660],['referee_officer',679],['coach',699],['doctor',720],['masseur',741]];
+ for(const [key,top] of staff){
+   write(value(key),158,top,8,201);
+   write(value(key+'_doc'),486,top,7,75);
+ }
  const bytes=await pdf.save();const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);
  const a=document.createElement('a');a.href=url;a.download='Distinta_Volla_United_'+(m.match_date||'gara')+'.pdf';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
  toast('Distinta PDF generata');
