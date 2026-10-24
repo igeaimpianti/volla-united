@@ -251,7 +251,7 @@ async function adminCall(body){const {data:{session}}=await sb.auth.getSession()
 
 const fmtItalian=d=>d?d.split('-').reverse().join('/') : '';
 function distintaForm(m){
- const values={heading:'',competition:m.match_type||'',place:m.field_name||'',date:m.match_date||'',time:(m.kick_off_time||'').slice(0,5),assistant:'',assistant_doc:'',accompanying:'',accompanying_doc:'',referee_officer:'',referee_officer_doc:'',coach:m.coaches_text||'',coach_doc:'',doctor:'',doctor_doc:'',masseur:'',masseur_doc:''};
+ const values={heading:'VOLLA UNITED - '+(m.opponent||''),competition:m.match_type||'',place:m.field_name||'',date:m.match_date||'',time:(m.kick_off_time||'').slice(0,5),assistant:'',assistant_doc:'',accompanying:'',accompanying_doc:'',referee_officer:'',referee_officer_doc:'',coach:m.coaches_text||'',coach_doc:'',doctor:'',doctor_doc:'',masseur:'',masseur_doc:''};
  const f=(id,label,type='text')=>`<div class="field"><label>${label}</label><input id="df-${id}" type="${type}" value="${esc(values[id]||'')}"></div>`;
  const staff=[['assistant','Assistente arbitro'],['accompanying','Dirigente accompagnatore'],['referee_officer','Dirigente addetto arbitro'],['coach','Allenatore'],['doctor','Medico sociale'],['masseur','Massaggiatore']];
  return `<section class="panel" id="distinta-panel"><h2>📄 Distinta Gara · ${esc(m.opponent||'')}</h2><p class="muted">I campi sono modificabili. Il PDF riproduce il modello ufficiale caricato.</p><div class="fields">${f('heading','Distinta Giocatori partecipanti alla gara')}${f('competition','Campionato')}${f('place','Da disputare a')}${f('date','Il','date')}${f('time','Alle ore','time')}</div><h3>Staff (facoltativo)</h3><div class="fields">${staff.map(([k,label])=>f(k,label)+f(k+'_doc','Documento e/o tessera FIGC n°')).join('')}</div><div class="actions"><button type="button" class="btn" id="create-distinta">📄 Genera PDF distinta</button><button type="button" class="btn alt" id="close-distinta">Chiudi</button></div><p class="muted">C.I. e matricola vengono recuperate dalle schede calciatori.</p></section>`;
@@ -286,7 +286,7 @@ async function generateDistinta(m){
  // Il titolo libero viene inserito nello spazio già previsto, senza coprire la tabella.
  if(value('heading')){
    page.drawRectangle({x:34*sx,y:H-148*sy,width:527*sx,height:16*sy,color:rgb(1,1,1)});
-   write(value('heading'),36,144,9,520,true);
+   write('Distinta Giocatori partecipanti alla gara: '+value('heading'),36,144,8.5,520,true);
  }
  // Riga campionato: testo DOPO le etichette stampate.
  write(value('competition'),86,172,7,74);
