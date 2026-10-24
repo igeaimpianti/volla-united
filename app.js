@@ -50,45 +50,21 @@ function opponentSuggestions(value=''){
   const q=upper(value).trim();
   return knownOpponents().filter(n=>!q||n.includes(q)).slice(0,30);
 }
-// Il menu viene spostato nel body: evita i tagli dovuti a overflow/transform su iOS.
-function opponentMenu(){
-  const box=document.getElementById('opponent-suggestions');
-  if(box&&box.parentElement!==document.body)document.body.appendChild(box);
-  return box;
-}
-function positionOpponentMenu(){
-  const input=$('#opponent'),box=opponentMenu();
-  if(!input||!box||box.style.display==='none')return;
-  const r=input.getBoundingClientRect();
-  const vv=window.visualViewport;
-  const viewTop=vv?vv.offsetTop:0;
-  const viewHeight=vv?vv.height:window.innerHeight;
-  const viewBottom=viewTop+viewHeight;
-  const spaceBelow=viewBottom-r.bottom;
-  const spaceAbove=r.top-viewTop;
-  const above=spaceBelow<135&&spaceAbove>spaceBelow;
-  const available=Math.max(70,(above?spaceAbove:spaceBelow)-8);
-  const h=Math.min(220,available);
-  Object.assign(box.style,{
-    position:'fixed',left:Math.max(6,r.left)+'px',
-    top:(above?Math.max(viewTop+4,r.top-h-4):r.bottom+3)+'px',
-    width:Math.min(r.width,window.innerWidth-12)+'px',maxHeight:h+'px',
-    overflowY:'auto',webkitOverflowScrolling:'touch',
-    zIndex:'2147483647',background:'#24151d',border:'1px solid #54313e',
-    borderRadius:'10px',boxShadow:'0 10px 25px #0008',
-    boxSizing:'border-box',transform:'none'
-  });
-}
+// Menu in flusso: sempre IMMEDIATAMENTE SOTTO il campo, mai sopra.
+// Non usa coordinate viewport, overlay o portali: la tastiera iOS non lo sposta.
+function opponentMenu(){return document.getElementById('opponent-suggestions')}
 function refreshOpponentSuggestions(show=true){
   const input=$('#opponent'),box=opponentMenu();
   if(!input||!box)return;
   const suggestions=opponentSuggestions(input.value);
-  box.innerHTML=suggestions.map(n=>`<button type="button" data-opponent="${esc(n)}" style="display:block;width:100%;text-align:left;padding:12px;background:#24151d;color:#fff;border:0;border-bottom:1px solid #54313e;font:inherit">${esc(n)}</button>`).join('');
+  box.innerHTML=suggestions.map(n=>`<button type="button" data-opponent="${esc(n)}" style="display:block;width:100%;text-align:left;padding:13px;background:#24151d;color:#fff;border:0;border-bottom:1px solid #54313e;font:inherit">${esc(n)}</button>`).join('');
+  Object.assign(box.style,{
+    position:'static',top:'auto',left:'auto',right:'auto',width:'100%',
+    maxHeight:'180px',overflowY:'auto',webkitOverflowScrolling:'touch',
+    transform:'none',zIndex:'auto',marginTop:'5px',boxSizing:'border-box',
+    background:'#24151d',border:'1px solid #54313e',borderRadius:'10px'
+  });
   box.style.display=show&&suggestions.length?'block':'none';
-  if(box.style.display==='block'){
-    positionOpponentMenu();
-    requestAnimationFrame(positionOpponentMenu);
-  }
   box.querySelectorAll('[data-opponent]').forEach(b=>{
     b.addEventListener('pointerdown',e=>e.preventDefault());
     b.addEventListener('click',()=>{
@@ -127,11 +103,6 @@ function bindMatchText(){
         if(document.activeElement===input)refreshOpponentSuggestions(true);
       }finally{opponentFetchInProgress=false}
     };
-    const updatePosition=()=>positionOpponentMenu();
-    window.addEventListener('resize',updatePosition,{signal:opponentDropdownController.signal});
-    window.addEventListener('scroll',updatePosition,{capture:true,passive:true,signal:opponentDropdownController.signal});
-    window.visualViewport?.addEventListener('resize',updatePosition,{signal:opponentDropdownController.signal});
-    window.visualViewport?.addEventListener('scroll',updatePosition,{signal:opponentDropdownController.signal});
     input.addEventListener('focus',openOpponents);
     input.addEventListener('click',openOpponents);
     input.addEventListener('keydown',e=>{if(e.key==='Escape')box.style.display='none'});
@@ -165,7 +136,7 @@ const sortPlayers=(a,b)=>{
 };
 
 const playerForm=p=>`<form id="playerformreal" class="panel"><h3>${p?'Modifica':'Nuovo'} calciatore</h3><div class="fields">${field('firstname','Nome',p?.first_name)}${field('surname','Cognome',p?.last_name)}${field('birthday','Data di nascita',p?.birth_date,'date')}${field('shirt','Numero maglia',p?.jersey_number,'number')}<div class="field"><label>Ruolo principale</label><select id="role">${roles.map(r=>`<option ${p?.primary_role===r?'selected':''}>${r}</option>`).join('')}</select></div><div class="field"><label>Ruolo secondario</label><select id="role2"><option value="">Nessuno</option>${roles.map(r=>`<option ${p?.secondary_role===r?'selected':''}>${r}</option>`).join('')}</select></div></div><div class="actions"><button class="btn">Salva calciatore</button><button type="button" class="btn alt" data-action="close-player">Annulla</button></div></form>`;
-const matchEditor=()=>{let ids=convocable();if(editing&&me.role==='admin'&&!ids.includes(currentCat))ids=[...ids,currentCat];if(!ids.includes(currentCat))currentCat=ids[0]||'';if(!ids.length)return'<h2>📋 Convocazioni</h2><div class="panel empty">Non sei autorizzato a creare convocazioni per nessuna categoria.</div>';const ps=players.filter(p=>p.category_id===currentCat).sort(sortPlayers);return`<h2 class="sectionhead">📋 ${editing?'Modifica':'Nuova'} convocazione</h2>${catSelector(ids)}<form id="matchform" class="panel"><div class="fields"><div class="field"><label>Tipologia gara</label><select id="kind">${['AMICHEVOLE','TORNEO FIGC','NEXT GEN','CAMPIONATO','TORNEO','TRIANGOLARE','ALTRO'].map(x=>`<option ${draft?.match_type===x?'selected':''}>${x}</option>`).join('')}</select></div>${field('customkind','Se ALTRO, specifica',draft?.custom_kind)}${field('fieldname','Campo da gioco',draft?.field_name||'MADRIGAL')}${field('opponent','Avversario',draft?.opponent).replace('<input id="opponent"','<input id="opponent" autocomplete="off"').replace('</div>','<div id="opponent-suggestions" role="listbox" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:210px;overflow-y:auto;border:1px solid #54313e;border-radius:10px;background:#24151d;z-index:100;box-shadow:0 10px 25px #0008"></div></div>').replace('class="field"','class="field" style="position:relative"')}${field('date','Data',draft?.match_date||new Date().toLocaleDateString('en-CA'),'date')}${field('meet','Ora convocazione',draft?.meeting_time||'17:35','time')}${field('start','Inizio partita',draft?.kick_off_time||'17:50','time')}${field('shirtcolor','Maglia',draft?.jersey_color||'ROSSO-NERA')}${field('shorts','Pantaloncini',draft?.shorts_color||'NERO')}${field('socks','Calzerotti',draft?.socks_color||'NERO')}</div><div class="field" style="margin-top:13px"><label>Avviso ai genitori</label><textarea id="notice">${esc(draft?.notice||'Comunicare tempestivamente ogni tipo di assenza IN PRIVATO.')}</textarea></div><div class="field" style="margin-top:13px"><label>Mister (uno per riga)</label><textarea id="coaches">${esc(draft?.coaches_text||me.full_name.toUpperCase())}</textarea></div><h3 class="sectionhead">Seleziona i convocati · <span id="count">${selected.length}</span></h3><div class="stack">${ps.map(p=>`<div class="check"><input type="checkbox" id="p${p.id}" data-player="${p.id}" ${selected.includes(p.id)?'checked':''}><label for="p${p.id}">${esc(p.last_name)} ${esc(p.first_name)} <span class="muted">· ${esc(p.primary_role||'')}</span></label></div>`).join('')||'<p class="empty">Inserisci prima i calciatori della categoria.</p>'}</div><div class="actions"><button class="btn" type="submit">💾 Salva convocazione</button><button class="btn alt" type="button" data-action="preview">👁 Anteprima WhatsApp</button></div></form><div id="previewarea"></div>`};
+const matchEditor=()=>{let ids=convocable();if(editing&&me.role==='admin'&&!ids.includes(currentCat))ids=[...ids,currentCat];if(!ids.includes(currentCat))currentCat=ids[0]||'';if(!ids.length)return'<h2>📋 Convocazioni</h2><div class="panel empty">Non sei autorizzato a creare convocazioni per nessuna categoria.</div>';const ps=players.filter(p=>p.category_id===currentCat).sort(sortPlayers);return`<h2 class="sectionhead">📋 ${editing?'Modifica':'Nuova'} convocazione</h2>${catSelector(ids)}<form id="matchform" class="panel"><div class="fields"><div class="field"><label>Tipologia gara</label><select id="kind">${['AMICHEVOLE','TORNEO FIGC','NEXT GEN','CAMPIONATO','TORNEO','TRIANGOLARE','ALTRO'].map(x=>`<option ${draft?.match_type===x?'selected':''}>${x}</option>`).join('')}</select></div>${field('customkind','Se ALTRO, specifica',draft?.custom_kind)}${field('fieldname','Campo da gioco',draft?.field_name||'MADRIGAL')}${field('opponent','Avversario',draft?.opponent).replace('<input id="opponent"','<input id="opponent" autocomplete="off"').replace('</div>','<div id="opponent-suggestions" role="listbox" style="display:none;position:static;width:100%;max-height:180px;overflow-y:auto;border:1px solid #54313e;border-radius:10px;background:#24151d;z-index:100;box-shadow:0 10px 25px #0008"></div></div>')}${field('date','Data',draft?.match_date||new Date().toLocaleDateString('en-CA'),'date')}${field('meet','Ora convocazione',draft?.meeting_time||'17:35','time')}${field('start','Inizio partita',draft?.kick_off_time||'17:50','time')}${field('shirtcolor','Maglia',draft?.jersey_color||'ROSSO-NERA')}${field('shorts','Pantaloncini',draft?.shorts_color||'NERO')}${field('socks','Calzerotti',draft?.socks_color||'NERO')}</div><div class="field" style="margin-top:13px"><label>Avviso ai genitori</label><textarea id="notice">${esc(draft?.notice||'Comunicare tempestivamente ogni tipo di assenza IN PRIVATO.')}</textarea></div><div class="field" style="margin-top:13px"><label>Mister (uno per riga)</label><textarea id="coaches">${esc(draft?.coaches_text||me.full_name.toUpperCase())}</textarea></div><h3 class="sectionhead">Seleziona i convocati · <span id="count">${selected.length}</span></h3><div class="stack">${ps.map(p=>`<div class="check"><input type="checkbox" id="p${p.id}" data-player="${p.id}" ${selected.includes(p.id)?'checked':''}><label for="p${p.id}">${esc(p.last_name)} ${esc(p.first_name)} <span class="muted">· ${esc(p.primary_role||'')}</span></label></div>`).join('')||'<p class="empty">Inserisci prima i calciatori della categoria.</p>'}</div><div class="actions"><button class="btn" type="submit">💾 Salva convocazione</button><button class="btn alt" type="button" data-action="preview">👁 Anteprima WhatsApp</button></div></form><div id="previewarea"></div>`};
 function getDraft(){return{category_id:currentCat,match_type:upper(val('kind')==='ALTRO'?val('customkind'):val('kind')),field_name:upper(val('fieldname')),opponent:upper(val('opponent')),match_date:val('date'),meeting_time:val('meet'),kick_off_time:val('start'),jersey_color:upper(val('shirtcolor')),shorts_color:upper(val('shorts')),socks_color:upper(val('socks')),notice:upper(val('notice')),coaches_text:upper(val('coaches')),player_ids:selected}}
 const history=()=>`<h2>🗂 Storico convocazioni</h2><section class="panel">${matches.sort((a,b)=>b.match_date.localeCompare(a.match_date)).map(m=>`<div class="item"><div class="row"><div><strong>${esc(m.opponent)} · ${esc(cats.find(c=>c.id===m.category_id)?.name)}</strong><small>${esc(m.match_date)} · ${esc(m.field_name)} · ${esc(m.match_type)}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div></div>`).join('')||'<p class="empty">Nessuna convocazione salvata</p>'}</section><div id="historydetail"></div>`;
 function formatMessage(m){const dt=new Date(m.match_date+'T12:00:00');const date=isNaN(+dt)?m.match_date:dt.toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).toUpperCase();const names=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean).sort(sortPlayers);return`ⒸⓄⓃⓋⓄⒸⒶⓏⒾⓄⓃⒺ\n\n⚽️ 𝚃𝙸𝙿𝙾𝙻𝙾𝙶𝙸𝙰 𝙶𝙰𝚁𝙰: ${m.match_type}\n🏟 𝙲𝙰𝙼𝙿𝙾 𝙳𝙰 𝙶𝙸𝙾𝙲𝙾: ${m.field_name}\n🗓 𝙳𝙰𝚃A: ${date}\n🥅 𝙰𝚅𝚅𝙴𝚁𝚂𝙰𝚁𝙸𝙾: ${m.opponent}\n⏱ 𝙾𝚛𝚊 𝚌𝚘𝚗𝚟𝚘𝚌𝚊𝚣𝚒𝚘𝚗𝚎: ${(m.meeting_time||'').slice(0,5).replace(':',',')}\n⏱ inizio partita : ${(m.kick_off_time||'').slice(0,5).replace(':',',')}\n🎽 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚘 𝚐𝚊𝚛𝚊:\n𝑴𝒂𝒈𝒍𝒊𝒂 𝐆𝐀𝐑𝐀  ${m.jersey_color}\n𝑷𝒂𝒏𝒕𝒂𝒍𝒐𝒏𝒄𝒊𝒏𝒊 ${m.shorts_color}\n𝑪𝒂𝒍𝒛𝒆𝒓𝒐𝒕𝒕𝒊 ${m.socks_color}\n⚠️ 𝐀𝐓𝐓𝐄𝐍𝐙𝐈𝐎𝐍𝐄\n${m.notice}\nℂ𝕆ℕ𝕍𝕆ℂ𝔸𝕋𝕀\n${names.map((p,i)=>`${i+1}. ${p.last_name} ${p.first_name}`).join('\n')}\n🖋 𝙼𝚒𝚜𝚝𝚎𝚛\n${m.coaches_text}\n#𝚠𝚎𝙻⚽️𝚟𝚎 VOLLAUNITED🔥`}
