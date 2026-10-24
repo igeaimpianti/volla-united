@@ -48,7 +48,9 @@ async function saveOpponentToSupabase(name){
 }
 function opponentSuggestions(value=''){
   const q=upper(value).trim();
-  return knownOpponents().filter(n=>!q||n.includes(q)).slice(0,30);
+  // Su iPhone il menu rimane nascosto fino alla terza lettera.
+  if(q.length<3)return [];
+  return knownOpponents().filter(n=>n.includes(q)).slice(0,30);
 }
 // Menu in flusso: sempre IMMEDIATAMENTE SOTTO il campo, mai sopra.
 // Non usa coordinate viewport, overlay o portali: la tastiera iOS non lo sposta.
