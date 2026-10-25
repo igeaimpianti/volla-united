@@ -271,14 +271,55 @@ function bindAttendance(){
       await loadAttendance();render();toast('Presenze salvate correttamente');
     }catch(err){toast('Errore: '+err.message);btn.disabled=false}
   });
-  $('#print-attendance')?.addEventListener('click',()=>{
-    const from=val('att-from'),to=val('att-to');if(from>to)return toast('Intervallo date non valido');
-    const ps=players.filter(p=>p.category_id===currentCat&&(!attendancePlayer||p.id===attendancePlayer)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'it'));
-    const dates=sessions.filter(x=>x.category_id===currentCat&&x.training_date>=from&&x.training_date<=to).sort((a,b)=>a.training_date.localeCompare(b.training_date));
-    const cell=(p,t)=>{const r=attendance.find(x=>x.session_id===t.id&&x.player_id===p.id);return r?(r.present?'P':'A'):'—'};
-    const body=ps.map(p=>{const a=dates.map(t=>cell(p,t));const n=a.filter(x=>x==='P').length,abs=a.filter(x=>x==='A').length;return `<tr><td>${esc(fullName(p))}</td>${a.map(x=>`<td>${x}</td>`).join('')}<td>${n}</td><td>${abs}</td><td>${n+abs?Math.round(n*100/(n+abs)):0}%</td></tr>`}).join('');
-    const html=`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Presenze Volla United</title><style>body{font-family:Arial,sans-serif;padding:16px;color:#222}header{display:flex;align-items:center;gap:16px}img{width:72px;height:72px;object-fit:contain}h1{font-size:22px}table{border-collapse:collapse;width:100%;font-size:10px;margin-top:20px}td,th{border:1px solid #999;padding:6px;text-align:center}td:first-child,th:first-child{text-align:left;white-space:nowrap}th{background:#eee}@page{size:landscape;margin:12mm}</style></head><body><header><img src="${new URL('logo.png',location.href).href}"><div><h1>VOLLA UNITED · REGISTRO PRESENZE</h1><p>Categoria: ${esc(selectedCategory()?.name||'')} · Dal ${dateIt(from)} al ${dateIt(to)}</p></div></header><table><thead><tr><th>Allievo</th>${dates.map(t=>`<th>${dateIt(t.training_date)}</th>`).join('')}<th>P</th><th>A</th><th>%</th></tr></thead><tbody>${body}</tbody></table><p>P = Presente · A = Assente · — = Non registrato</p><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350))<\/script></body></html>`;
-    const w=window.open('','_blank');if(!w)return toast('Consenti i popup per generare il PDF');w.document.open();w.document.write(html);w.document.close();
+  $('#print-attendance')?.addEventListener('click',async e=>{
+    const btn=e.currentTarget;btn.disabled=true;
+    try{
+      const from=val('att-from'),to=val('att-to');
+      if(!from||!to||from>to)throw Error('Intervallo date non valido');
+      const ps=players.filter(p=>p.category_id===currentCat&&(!attendancePlayer||p.id===attendancePlayer)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'it'));
+      const dates=sessions.filter(x=>x.category_id===currentCat&&x.training_date>=from&&x.training_date<=to).sort((a,b)=>a.training_date.localeCompare(b.training_date));
+      if(!ps.length)throw Error('Nessun calciatore da esportare');
+      const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
+      const pdf=await PDFDocument.create();
+      const regular=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
+      const black=rgb(.1,.1,.1),red=rgb(.65,.04,.1),gray=rgb(.92,.92,.92);
+      const plain=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ');
+      const att=(p,t)=>{const a=attendance.find(x=>x.session_id===t.id&&x.player_id===p.id);return a?(a.present?'P':'A'):'-'};
+      // Raggruppa le date su più pagine per mantenere le celle leggibili.
+      const chunks=[];for(let i=0;i<dates.length;i+=10)chunks.push(dates.slice(i,i+10));
+      if(!chunks.length)chunks.push([]);
+      const rowsPerPage=21;
+      for(let k=0;k<chunks.length;k++){
+        const chunk=chunks[k];
+        for(let offset=0;offset<ps.length;offset+=rowsPerPage){
+          const subset=ps.slice(offset,offset+rowsPerPage);
+          const page=pdf.addPage([841.89,595.28]),W=page.getWidth(),H=page.getHeight();
+          const draw=(s,x,y,size=9,f=regular)=>page.drawText(plain(s),{x,y,size,font:f,color:black});
+          draw('VOLLA UNITED - REGISTRO PRESENZE',35,H-39,17,bold);
+          draw(`Categoria: ${selectedCategory()?.name||''}    Dal ${dateIt(from)} al ${dateIt(to)}`,35,H-60,10);
+          draw(`Date ${k+1}/${chunks.length}  -  Pagina ${pdf.getPageCount()}`,W-175,H-60,9);
+          const x0=35,tableW=W-70,nameW=190,otherW=125,dateW=(tableW-nameW-otherW)/Math.max(chunk.length,1);
+          const headers=['CALCIATORE',...chunk.map(t=>dateIt(t.training_date)),'P','A','%'];
+          const widths=[nameW,...chunk.map(()=>dateW),otherW/3,otherW/3,otherW/3];
+          const rowH=19,top=H-91;
+          let xx=x0;
+          headers.forEach((h,i)=>{page.drawRectangle({x:xx,y:top-rowH,width:widths[i],height:rowH,color:gray,borderColor:black,borderWidth:.5});let fs=i===0?9:7;let txt=plain(h);while(txt.length&& (i===0?bold:regular).widthOfTextAtSize(txt,fs)>widths[i]-6)txt=txt.slice(0,-1);draw(txt,xx+3,top-rowH+6,fs,i===0?bold:regular);xx+=widths[i]});
+          subset.forEach((p,idx)=>{
+            const all=dates.map(t=>att(p,t)),P=all.filter(x=>x==='P').length,A=all.filter(x=>x==='A').length;
+            const cells=[fullName(p),...chunk.map(t=>att(p,t)),P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
+            let x=x0;const y=top-(idx+2)*rowH;
+            cells.forEach((c,i)=>{page.drawRectangle({x,y,width:widths[i],height:rowH,borderColor:black,borderWidth:.45});let t=plain(c),fs=i===0?8.5:9;while(t.length&&regular.widthOfTextAtSize(t,fs)>widths[i]-6)t=t.slice(0,-1);draw(t,x+3,y+6,fs);x+=widths[i]});
+          });
+          draw('P = Presente   A = Assente   - = Non registrato',35,34,9);
+        }
+      }
+      const bytes=await pdf.save();
+      const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=url;a.download=`Presenze_Volla_United_${from}_${to}.pdf`;document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+      toast('PDF presenze generato');
+    }catch(err){console.error(err);toast('Errore PDF: '+err.message)}
+    finally{if(btn.isConnected)btn.disabled=false}
   });
 }
 
@@ -351,9 +392,26 @@ async function generateDistinta(m){
    write(value(key),158,top,8,201);
    write(value(key+'_doc'),486,top,7,75);
  }
- const bytes=await pdf.save();const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);
- const a=document.createElement('a');a.href=url;a.download='Distinta_Volla_United_'+(m.match_date||'gara')+'.pdf';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
- toast('Distinta PDF generata');
+ const bytes=await pdf.save();
+ const filename='Distinta_Volla_United_'+(m.match_date||'gara')+'.pdf';
+ const file=new File([bytes],filename,{type:'application/pdf'});
+ // Condividi direttamente il documento: NON condividere un URL blob, che su WhatsApp appare come link inutilizzabile.
+ if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+   try{
+     await navigator.share({files:[file]});
+     toast('Distinta condivisa');
+   }catch(shareError){
+     if(shareError.name!=='AbortError')throw shareError;
+   }
+ }else{
+   // Browser senza condivisione di file: scarica il PDF, da allegare manualmente su WhatsApp.
+   const blob=new Blob([bytes],{type:'application/pdf'});
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement('a');a.href=url;a.download=filename;
+   document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),60000);
+   toast('PDF scaricato: allegalo come documento su WhatsApp');
+ }
  }catch(e){console.error(e);toast(e.message);alert('Impossibile generare la distinta: '+e.message)}finally{if(btn&&btn.isConnected)btn.disabled=false}
 }
 function bind(){document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{page=b.dataset.page;editing=null;draft=null;selected=[];render()});document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>act(b.dataset.action,b.dataset.id));$('#category')?.addEventListener('change',e=>{currentCat=e.target.value;selected=[];draft=null;render()});document.querySelectorAll('[data-player]').forEach(el=>el.onchange=()=>{selected=[...document.querySelectorAll('[data-player]:checked')].map(x=>x.dataset.player);$('#count').textContent=selected.length});if(page==='attendance')bindAttendance();if($('#playerformreal'))bindPlayer();if($('#matchform'))bindMatchText();if($('#matchform'))$('#matchform').onsubmit=async e=>{e.preventDefault();try{let m=getDraft();if(!m.opponent||!m.match_date)throw Error('Inserisci data e avversario');const ids=m.player_ids;delete m.player_ids;if(!editing)m.created_by=me.id;let result=editing?await sb.from('matches').update(m).eq('id',editing).select('id').single():await sb.from('matches').insert(m).select('id').single();if(result.error)throw result.error;rememberOpponent(m.opponent);let opponentSaveError=null;try{await saveOpponentToSupabase(m.opponent)}catch(e){opponentSaveError=e.message}const matchId=result.data.id;const del=await sb.from('match_players').delete().eq('match_id',matchId);if(del.error)throw del.error;if(ids.length){const ins=await sb.from('match_players').insert(ids.map((player_id,i)=>({match_id:matchId,player_id,sort_order:i})));if(ins.error)throw ins.error;}await load();toast(opponentSaveError||'Convocazione salvata');page='history';editing=null;draft=null;selected=[];render()}catch(err){toast(err.message)}};if($('#catform'))$('#catform').onsubmit=async e=>{e.preventDefault();try{await save('categories',{name:val('catname')});toast('Categoria aggiunta')}catch(err){toast(err.message)}};if($('#userform'))$('#userform').onsubmit=async e=>{e.preventDefault();const button=$('#userform button[type=submit], #userform button.btn');button.disabled=true;try{const assignments=cats.filter(c=>document.querySelector(`[data-newcat="${c.id}"]`)?.checked||document.querySelector(`[data-newcall="${c.id}"]`)?.checked).map(c=>({category_id:c.id,can_call_up:!!document.querySelector(`[data-newcall="${c.id}"]`)?.checked}));let r=await adminCall({action:'create',username:val('newuser'),full_name:val('newname')});if(!r.temporary_password||!r.user_id)throw Error('Account creato, ma risposta incompleta: non riprovare la creazione. Usa Reset password.');$('#credential').innerHTML=`<div class="item"><strong>Credenziali da consegnare privatamente</strong><p>Utente: ${esc(r.username)}</p><p>Password temporanea: <b>${esc(r.temporary_password)}</b></p><p>Consegna subito la password al mister: non sarà mostrata nuovamente.</p></div>`;if(assignments.length){try{await adminCall({action:'set-categories',user_id:r.user_id,assignments})}catch(err){toast('Account creato, ma categorie non assegnate: '+err.message)}}users=await query('profiles');access=await query('coach_categories');toast('Account creato. Conserva la password temporanea.')}catch(err){toast(err.message)}finally{button.disabled=false}};document.querySelectorAll('[data-access]').forEach(x=>x.onchange=async()=>{const [user_id,category_id,kind]=x.dataset.access.split('|');if(users.find(u=>u.id===user_id)?.role!=='coach'){x.checked=!x.checked;return toast('I permessi admin non si modificano da questa schermata')}if(kind==='convocate'&&x.checked){const view=document.querySelector(`[data-access="${user_id}|${category_id}|view"]`);if(view)view.checked=true}if(kind==='view'&&!x.checked){const call=document.querySelector(`[data-access="${user_id}|${category_id}|convocate"]`);if(call)call.checked=false}const group=[...document.querySelectorAll('[data-access]')].filter(el=>el.dataset.access.startsWith(user_id+'|'));const assignments=cats.filter(c=>{const view=group.find(el=>el.dataset.access===`${user_id}|${c.id}|view`);const call=group.find(el=>el.dataset.access===`${user_id}|${c.id}|convocate`);return view?.checked||call?.checked}).map(c=>({category_id:c.id,can_call_up:!!group.find(el=>el.dataset.access===`${user_id}|${c.id}|convocate`)?.checked}));try{await adminCall({action:'set-categories',user_id,assignments});access=await query('coach_categories');render();toast('Permessi aggiornati')}catch(err){toast(err.message);x.checked=!x.checked}})}
