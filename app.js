@@ -285,34 +285,39 @@ function bindAttendance(){
       const black=rgb(.1,.1,.1),red=rgb(.65,.04,.1),gray=rgb(.92,.92,.92);
       const plain=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ');
       const att=(p,t)=>{const a=attendance.find(x=>x.session_id===t.id&&x.player_id===p.id);return a?(a.present?'P':'A'):'-'};
-      // Raggruppa le date su più pagine per mantenere le celle leggibili.
-      const chunks=[];for(let i=0;i<dates.length;i+=10)chunks.push(dates.slice(i,i+10));
-      if(!chunks.length)chunks.push([]);
-      const rowsPerPage=21;
-      for(let k=0;k<chunks.length;k++){
-        const chunk=chunks[k];
-        for(let offset=0;offset<ps.length;offset+=rowsPerPage){
-          const subset=ps.slice(offset,offset+rowsPerPage);
-          const page=pdf.addPage([841.89,595.28]),W=page.getWidth(),H=page.getHeight();
-          const draw=(s,x,y,size=9,f=regular)=>page.drawText(plain(s),{x,y,size,font:f,color:black});
-          draw('VOLLA UNITED - REGISTRO PRESENZE',35,H-39,17,bold);
-          draw(`Categoria: ${selectedCategory()?.name||''}    Dal ${dateIt(from)} al ${dateIt(to)}`,35,H-60,10);
-          draw(`Date ${k+1}/${chunks.length}  -  Pagina ${pdf.getPageCount()}`,W-175,H-60,9);
-          const x0=35,tableW=W-70,nameW=190,otherW=125,dateW=(tableW-nameW-otherW)/Math.max(chunk.length,1);
-          const headers=['CALCIATORE',...chunk.map(t=>dateIt(t.training_date)),'P','A','%'];
-          const widths=[nameW,...chunk.map(()=>dateW),otherW/3,otherW/3,otherW/3];
-          const rowH=19,top=H-91;
-          let xx=x0;
-          headers.forEach((h,i)=>{page.drawRectangle({x:xx,y:top-rowH,width:widths[i],height:rowH,color:gray,borderColor:black,borderWidth:.5});let fs=i===0?9:7;let txt=plain(h);while(txt.length&& (i===0?bold:regular).widthOfTextAtSize(txt,fs)>widths[i]-6)txt=txt.slice(0,-1);draw(txt,xx+3,top-rowH+6,fs,i===0?bold:regular);xx+=widths[i]});
-          subset.forEach((p,idx)=>{
-            const all=dates.map(t=>att(p,t)),P=all.filter(x=>x==='P').length,A=all.filter(x=>x==='A').length;
-            const cells=[fullName(p),...chunk.map(t=>att(p,t)),P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
-            let x=x0;const y=top-(idx+2)*rowH;
-            cells.forEach((c,i)=>{page.drawRectangle({x,y,width:widths[i],height:rowH,borderColor:black,borderWidth:.45});let t=plain(c),fs=i===0?8.5:9;while(t.length&&regular.widthOfTextAtSize(t,fs)>widths[i]-6)t=t.slice(0,-1);draw(t,x+3,y+6,fs);x+=widths[i]});
-          });
-          draw('P = Presente   A = Assente   - = Non registrato',35,34,9);
-        }
-      }
+      // Un unico foglio PDF: A4 orizzontale per il mese, dimensioni maggiori
+      // se il periodo comprende tante date o la rosa supera una pagina.
+      const nameW=190,otherW=125,minDateW=47,margin=35;
+      const W=Math.max(841.89,margin*2+nameW+otherW+dates.length*minDateW);
+      const rowH=19,topPadding=91,footer=65;
+      const H=Math.max(595.28,topPadding+rowH*(ps.length+1)+footer);
+      const page=pdf.addPage([W,H]);
+      const draw=(s,x,y,size=9,f=regular)=>page.drawText(plain(s),{x,y,size,font:f,color:black});
+      draw('VOLLA UNITED - REGISTRO PRESENZE',margin,H-39,17,bold);
+      draw(`Categoria: ${selectedCategory()?.name||''}    Dal ${dateIt(from)} al ${dateIt(to)}`,margin,H-60,10);
+      const x0=margin,tableW=W-margin*2,dateW=(tableW-nameW-otherW)/Math.max(dates.length,1);
+      const headers=['Allievo',...dates.map(t=>dateIt(t.training_date)),'P','A','%'];
+      const widths=[nameW,...dates.map(()=>dateW),otherW/3,otherW/3,otherW/3];
+      const top=H-topPadding;
+      let xx=x0;
+      headers.forEach((h,i)=>{
+        page.drawRectangle({x:xx,y:top-rowH,width:widths[i],height:rowH,color:gray,borderColor:black,borderWidth:.5});
+        let fs=i===0?9:7;let txt=plain(h);
+        while(txt.length&&(i===0?bold:regular).widthOfTextAtSize(txt,fs)>widths[i]-6)txt=txt.slice(0,-1);
+        draw(txt,xx+3,top-rowH+6,fs,i===0?bold:regular);xx+=widths[i];
+      });
+      ps.forEach((p,idx)=>{
+        const all=dates.map(t=>att(p,t)),P=all.filter(x=>x==='P').length,A=all.filter(x=>x==='A').length;
+        const cells=[fullName(p),...all,P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
+        let x=x0;const y=top-(idx+2)*rowH;
+        cells.forEach((c,i)=>{
+          page.drawRectangle({x,y,width:widths[i],height:rowH,borderColor:black,borderWidth:.45});
+          let t=plain(c),fs=i===0?8.5:9;
+          while(t.length&&regular.widthOfTextAtSize(t,fs)>widths[i]-6)t=t.slice(0,-1);
+          draw(t,x+3,y+6,fs);x+=widths[i];
+        });
+      });
+      draw('P = Presente   A = Assente   - = Non registrato',margin,34,9);
       const bytes=await pdf.save();
       const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=url;a.download=`Presenze_Volla_United_${from}_${to}.pdf`;document.body.appendChild(a);a.click();a.remove();
