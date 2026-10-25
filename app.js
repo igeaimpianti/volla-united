@@ -281,48 +281,70 @@ function bindAttendance(){
       if(!ps.length)throw Error('Nessun calciatore da esportare');
       const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
       const pdf=await PDFDocument.create();
+      const page=pdf.addPage([595.28,841.89]); // A4 verticale, sempre una pagina
+      const W=page.getWidth(),H=page.getHeight();
       const regular=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
-      const black=rgb(.1,.1,.1),red=rgb(.65,.04,.1),gray=rgb(.92,.92,.92);
-      const plain=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ');
+      const ink=rgb(.12,.12,.12),red=rgb(.66,.07,.14),light=rgb(.94,.94,.94),white=rgb(1,1,1);
+      const clean=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
+      const write=(s,x,y,size=9,font=regular,color=ink)=>page.drawText(clean(s),{x,y,size,font,color});
+      const center=(s,y,size=10,font=regular,color=ink)=>write(s,(W-font.widthOfTextAtSize(clean(s),size))/2,y,size,font,color);
+      // Logo ufficiale della PWA, caricato dalla stessa cartella di app.js.
+      try{
+        const response=await fetch('./logo.png',{cache:'no-store'});
+        if(response.ok){
+          const logo=await pdf.embedPng(await response.arrayBuffer());
+          const scale=Math.min(78/logo.width,78/logo.height);
+          const lw=logo.width*scale,lh=logo.height*scale;
+          page.drawImage(logo,{x:(W-lw)/2,y:H-22-lh,width:lw,height:lh});
+        }
+      }catch(err){console.warn('Logo PDF non disponibile:',err)}
+      center('VOLLA UNITED',H-116,18,bold,red);
+      center('REGISTRO PRESENZE ALLENAMENTI',H-133,11,bold);
+      center(`Categoria: ${selectedCategory()?.name||''}     Dal ${dateIt(from)} al ${dateIt(to)}`,H-149,9);
+      center(`Allenamenti nel periodo: ${dates.length}`,H-163,8);
+      const margin=29,tableW=W-margin*2,top=H-184,bottom=55;
+      const nameW=166,summaryW=102,available=tableW-nameW-summaryW;
+      const dateW=dates.length?available/dates.length:0;
+      const widths=[nameW,...dates.map(()=>dateW),34,34,34];
+      const rowH=Math.min(24,(top-bottom)/(ps.length+1));
+      const fontSize=Math.max(5.5,Math.min(9,rowH*.43));
+      const dateFont=Math.max(3,Math.min(7,dateW*.34));
+      const fit=(value,width,size,font=regular)=>{
+        let text=clean(value);while(text&&font.widthOfTextAtSize(text,size)>width-5)text=text.slice(0,-1);
+        return text;
+      };
+      const cell=(value,x,y,width,fill=false,size=fontSize,font=regular,align='left')=>{
+        page.drawRectangle({x,y,width,height:rowH,borderColor:ink,borderWidth:.45,...(fill?{color:light}:{})});
+        const text=fit(value,width,size,font);
+        const tx=align==='center'?x+(width-font.widthOfTextAtSize(text,size))/2:x+3;
+        write(text,tx,y+(rowH-size)/2+1,size,font);
+      };
       const att=(p,t)=>{const a=attendance.find(x=>x.session_id===t.id&&x.player_id===p.id);return a?(a.present?'P':'A'):'-'};
-      // Un unico foglio PDF: A4 orizzontale per il mese, dimensioni maggiori
-      // se il periodo comprende tante date o la rosa supera una pagina.
-      const nameW=190,otherW=125,minDateW=47,margin=35;
-      const W=Math.max(841.89,margin*2+nameW+otherW+dates.length*minDateW);
-      const rowH=19,topPadding=91,footer=65;
-      const H=Math.max(595.28,topPadding+rowH*(ps.length+1)+footer);
-      const page=pdf.addPage([W,H]);
-      const draw=(s,x,y,size=9,f=regular)=>page.drawText(plain(s),{x,y,size,font:f,color:black});
-      draw('VOLLA UNITED - REGISTRO PRESENZE',margin,H-39,17,bold);
-      draw(`Categoria: ${selectedCategory()?.name||''}    Dal ${dateIt(from)} al ${dateIt(to)}`,margin,H-60,10);
-      const x0=margin,tableW=W-margin*2,dateW=(tableW-nameW-otherW)/Math.max(dates.length,1);
-      const headers=['Allievo',...dates.map(t=>dateIt(t.training_date)),'P','A','%'];
-      const widths=[nameW,...dates.map(()=>dateW),otherW/3,otherW/3,otherW/3];
-      const top=H-topPadding;
-      let xx=x0;
-      headers.forEach((h,i)=>{
-        page.drawRectangle({x:xx,y:top-rowH,width:widths[i],height:rowH,color:gray,borderColor:black,borderWidth:.5});
-        let fs=i===0?9:7;let txt=plain(h);
-        while(txt.length&&(i===0?bold:regular).widthOfTextAtSize(txt,fs)>widths[i]-6)txt=txt.slice(0,-1);
-        draw(txt,xx+3,top-rowH+6,fs,i===0?bold:regular);xx+=widths[i];
+      const headers=['CALCIATORE',...dates.map(t=>dateIt(t.training_date).slice(0,5)),'P','A','%'];
+      let x=margin;
+      headers.forEach((h,i)=>{cell(h,x,top-rowH,widths[i],true,i===0?8:i<=dates.length?dateFont:8,bold,i===0?'left':'center');x+=widths[i]});
+      ps.forEach((p,index)=>{
+        const results=dates.map(t=>att(p,t));
+        const P=results.filter(v=>v==='P').length,A=results.filter(v=>v==='A').length;
+        const values=[fullName(p),...results,P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
+        const y=top-rowH*(index+2);let cx=margin;
+        values.forEach((v,i)=>{cell(v,cx,y,widths[i],false,i===0?Math.min(8.5,fontSize):Math.min(8,fontSize),regular,i===0?'left':'center');cx+=widths[i]});
       });
-      ps.forEach((p,idx)=>{
-        const all=dates.map(t=>att(p,t)),P=all.filter(x=>x==='P').length,A=all.filter(x=>x==='A').length;
-        const cells=[fullName(p),...all,P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
-        let x=x0;const y=top-(idx+2)*rowH;
-        cells.forEach((c,i)=>{
-          page.drawRectangle({x,y,width:widths[i],height:rowH,borderColor:black,borderWidth:.45});
-          let t=plain(c),fs=i===0?8.5:9;
-          while(t.length&&regular.widthOfTextAtSize(t,fs)>widths[i]-6)t=t.slice(0,-1);
-          draw(t,x+3,y+6,fs);x+=widths[i];
-        });
-      });
-      draw('P = Presente   A = Assente   - = Non registrato',margin,34,9);
+      write('P = Presente     A = Assente     - = Non registrato',margin,32,8);
+      write(`Volla United  |  ${dateIt(from)} - ${dateIt(to)}`,margin,19,7);
       const bytes=await pdf.save();
-      const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);
-      const a=document.createElement('a');a.href=url;a.download=`Presenze_Volla_United_${from}_${to}.pdf`;document.body.appendChild(a);a.click();a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),60000);
-      toast('PDF presenze generato');
+      const filename=`Presenze_Volla_United_${from}_${to}.pdf`;
+      const file=new File([bytes],filename,{type:'application/pdf'});
+      if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+        try{await navigator.share({files:[file]});toast('PDF presenze condiviso')}
+        catch(err){if(err.name!=='AbortError')throw err}
+      }else{
+        const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+        const a=document.createElement('a');a.href=url;a.download=filename;
+        document.body.appendChild(a);a.click();a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),60000);
+        toast('PDF scaricato: puoi allegarlo come documento');
+      }
     }catch(err){console.error(err);toast('Errore PDF: '+err.message)}
     finally{if(btn.isConnected)btn.disabled=false}
   });
