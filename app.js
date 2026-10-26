@@ -529,6 +529,8 @@ async function uploadPlayerPhoto(playerId,file){
   if(up.error)throw Error('Caricamento foto: '+up.error.message);
   const r=await sb.from('player_photos').upsert({player_id:playerId,storage_path:path,updated_at:new Date().toISOString()},{onConflict:'player_id'});
   if(r.error)throw r.error;
+ const cached=playerPhotos.find(p=>p.player_id===playerId);
+ if(cached)cached.storage_path=path;else playerPhotos.push({player_id:playerId,storage_path:path});
   if(old&&old!==path)await sb.storage.from('volla-player-photos').remove([old]);
    const existing=playerPhotos.find(p=>p.player_id===playerId);if(existing){existing.storage_path=path;existing.card_storage_path=null}else playerPhotos.push({player_id:playerId,storage_path:path});
 }
@@ -595,27 +597,45 @@ function playerCard(p){
  const stats=cardStats(p),overall=cardOverall(p),photo=cardPhotoUrls[p.id]||'';
  const roles={Portiere:'POR',Difensore:'DIF',Centrocampista:'CEN',Attaccante:'ATT',Jolly:'JOL'};
  const role=roles[p.primary_role]||'JOL';
- // Sagoma a scudo con punta inferiore, fregi oro raro e disposizione stile FC.
- return `<div class="vu-fc-card" role="img" aria-label="Card oro raro ${esc(fullName(p))}, overall ${overall}">
-  <svg class="vu-fc-bg" viewBox="0 0 340 475" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="vuGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f9e7a1"/><stop offset=".3" stop-color="#ffe38c"/><stop offset=".62" stop-color="#e7b94c"/><stop offset="1" stop-color="#c48d29"/></linearGradient><linearGradient id="vuShine" x1="0" y1="0" x2="1" y2=".8"><stop offset="0" stop-color="#fff6c7" stop-opacity=".72"/><stop offset="1" stop-color="#fff6c7" stop-opacity="0"/></linearGradient></defs><path d="M35 8 Q170 -8 305 8 Q332 12 333 42 L333 400 Q330 420 304 431 L170 468 L36 431 Q7 420 7 398 L7 42 Q7 12 35 8Z" fill="url(#vuGold)" stroke="#f9e9ac" stroke-width="5"/><path d="M42 30 L303 30 L243 190 L67 256 Z" fill="url(#vuShine)"/><path d="M25 285 L316 67 L314 122 L62 338 Z" fill="#fff1b2" opacity=".28"/><path d="M33 340 L306 157 L308 192 L65 370Z" fill="#b98832" opacity=".17"/><path d="M23 394 Q170 420 317 394" fill="none" stroke="#fce8a5" stroke-width="2" opacity=".6"/></svg>
-  <div class="vu-fc-rating"><strong>${overall}</strong><span>${role}</span></div>
-  <div class="vu-fc-photo">${photo?`<img src="${esc(photo)}" alt="${esc(fullName(p))}">`:`<div class="vu-fc-placeholder">⚽<small>Carica una foto scontornata</small></div>`}</div>
-  <div class="vu-fc-name">${esc(p.last_name||p.first_name).toUpperCase()}</div>
-  <div class="vu-fc-stats">${[['VEL',0],['TIR',1],['PAS',2],['DRI',3],['DIF',4],['FIS',5]].map(([k,i])=>`<div><b>${stats[i]}</b> ${k}</div>`).join('')}</div>
-  <div class="vu-fc-icons"><svg width="28" height="20" viewBox="0 0 28 20" aria-label="Italia"><rect width="9.34" height="20" fill="#009246"/><rect x="9.34" width="9.34" height="20" fill="#fff"/><rect x="18.68" width="9.32" height="20" fill="#ce2b37"/></svg><img src="logo.png" alt="Volla United"></div>
+ const statLabels=['VEL','TIR','PAS','DRI','DIF','FIS'];
+ return `<div class="vu-fc-card" role="img" aria-label="Card Oro Raro Volla United di ${esc(fullName(p))}, overall ${overall}">
+ <svg class="vu-fc-bg" viewBox="0 0 340 475" preserveAspectRatio="none" aria-hidden="true">
+  <defs>
+   <linearGradient id="vuRareGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffeeb2"/><stop offset=".21" stop-color="#e6bc59"/><stop offset=".46" stop-color="#ffdf83"/><stop offset=".75" stop-color="#c99435"/><stop offset="1" stop-color="#f5d478"/></linearGradient>
+   <linearGradient id="vuRareGlint" x1="0" y1="0" x2="1" y2=".5"><stop offset="0" stop-color="#fff6d3" stop-opacity=".92"/><stop offset=".55" stop-color="#fff6d3" stop-opacity=".13"/><stop offset="1" stop-color="#8e5d15" stop-opacity=".28"/></linearGradient>
+   <pattern id="vuRareLines" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(36)"><path d="M0 0V5" stroke="#8f611e" stroke-width="1.2" opacity=".26"/></pattern>
+   <clipPath id="vuRareShape"><path d="M42 24 Q170 -2 298 24 Q306 26 311 37 Q321 53 337 55 L337 398 Q337 425 310 436 Q248 453 170 473 Q92 453 30 436 Q3 425 3 398 L3 55 Q19 53 29 37 Q34 26 42 24Z"/></clipPath>
+  </defs>
+  <path d="M42 24 Q170 -2 298 24 Q306 26 311 37 Q321 53 337 55 L337 398 Q337 425 310 436 Q248 453 170 473 Q92 453 30 436 Q3 425 3 398 L3 55 Q19 53 29 37 Q34 26 42 24Z" fill="url(#vuRareGold)" stroke="#f9e7a0" stroke-width="5"/>
+  <g clip-path="url(#vuRareShape)">
+   <path d="M80 18 L336 18 L336 226 L145 297 L38 252Z" fill="url(#vuRareLines)"/>
+   <path d="M-15 274 L354 78 L354 125 L-15 319Z" fill="url(#vuRareGlint)"/>
+   <path d="M-8 310 L345 122 L345 153 L-8 344Z" fill="#fff1b6" opacity=".62"/>
+   <path d="M-12 350 L355 154 L355 196 L-12 385Z" fill="url(#vuRareLines)" opacity=".85"/>
+   <path d="M45 23 Q170 5 295 23" fill="none" stroke="#fff5bf" stroke-width="3" opacity=".8"/>
+   <path d="M8 408 Q170 441 332 408" fill="none" stroke="#9d701f" stroke-width="2" opacity=".32"/>
+  </g>
+ </svg>
+ <div class="vu-fc-rating"><strong>${overall}</strong><span>${role}</span></div>
+ <div class="vu-fc-photo">${photo?`<img src="${esc(photo)}" alt="${esc(fullName(p))}">`:`<div class="vu-fc-placeholder">⚽<small>Carica una foto</small></div>`}</div>
+ <div class="vu-fc-name">${esc(p.last_name||p.first_name)}</div>
+ <div class="vu-fc-stats">${statLabels.map((k,i)=>`<div><span>${k}</span><b>${stats[i]}</b></div>`).join('')}</div>
+ <div class="vu-fc-icons"><svg width="30" height="21" viewBox="0 0 30 21" aria-label="Italia"><rect width="10" height="21" fill="#009246"/><rect x="10" width="10" height="21" fill="#fff"/><rect x="20" width="10" height="21" fill="#ce2b37"/></svg><img src="logo.png" alt="Volla United"></div>
  </div>`;
 }
 const vuCardCss=`<style>
-.vu-fc-card{width:min(100%,340px);aspect-ratio:340/475;position:relative;margin:16px auto;isolation:isolate;color:#493517;font-family:Arial,Helvetica,sans-serif;filter:drop-shadow(0 10px 16px #0008)}
+.vu-fc-card{width:min(100%,380px);aspect-ratio:340/475;position:relative;margin:16px auto;isolation:isolate;color:#241c0e;font-family:Arial,Helvetica,sans-serif;filter:drop-shadow(0 9px 13px #0009)}
 .vu-fc-bg{position:absolute;inset:0;width:100%;height:100%;z-index:-1}
-.vu-fc-rating{position:absolute;top:17%;left:12%;display:flex;flex-direction:column;align-items:center;z-index:3;text-shadow:0 1px 1px #fff5}
-.vu-fc-rating strong{font-size:clamp(30px,9vw,47px);line-height:1;font-weight:850}.vu-fc-rating span{font-size:17px;font-weight:750;margin-top:4px}
-.vu-fc-photo{position:absolute;top:12%;left:24%;width:69%;height:51%;display:flex;align-items:end;justify-content:center;overflow:hidden}
+.vu-fc-rating{position:absolute;top:18%;left:12%;display:flex;flex-direction:column;align-items:center;z-index:3}
+.vu-fc-rating strong{font-size:clamp(38px,11vw,61px);line-height:1;font-weight:900}.vu-fc-rating span{font-size:clamp(19px,5vw,26px);font-weight:800;margin-top:4px}
+.vu-fc-photo{position:absolute;top:8%;left:27%;width:70%;height:58%;display:flex;align-items:end;justify-content:center;overflow:hidden}
 .vu-fc-photo img{height:100%;width:100%;object-fit:contain;object-position:center bottom;filter:drop-shadow(1px 2px 2px #7b551a55)}
 .vu-fc-placeholder{font-size:60px;text-align:center;opacity:.6}.vu-fc-placeholder small{display:block;font-size:11px}
-.vu-fc-name{position:absolute;top:65%;left:10%;width:80%;text-align:center;font-weight:850;font-size:clamp(18px,5.5vw,25px);line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vu-fc-stats{position:absolute;top:74%;left:14%;width:72%;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);row-gap:7px;text-align:center;font-size:14px;font-weight:700;border-top:1px solid #c39749;padding-top:9px}
-.vu-fc-stats b{font-size:17px}.vu-fc-icons{position:absolute;top:87%;left:0;width:100%;display:flex;align-items:center;justify-content:center;gap:13px}.vu-fc-icons img{width:32px;height:32px;object-fit:contain}
+.vu-fc-name{position:absolute;top:66%;left:8%;width:84%;text-align:center;font-weight:900;font-size:clamp(24px,7vw,35px);line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vu-fc-stats{position:absolute;top:73%;left:9%;width:82%;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;text-align:center;font-weight:800}
+.vu-fc-stats>div{display:flex;flex-direction:column;align-items:center;gap:2px}
+.vu-fc-stats span{font-size:clamp(11px,3.2vw,16px)}.vu-fc-stats b{font-size:clamp(20px,6vw,30px);line-height:1.1}
+.vu-fc-icons{position:absolute;top:86%;left:0;width:100%;display:flex;align-items:center;justify-content:center;gap:18px}.vu-fc-icons img{width:37px;height:37px;object-fit:contain}
 </style>`;
 function profilePage(){
  const available=players.filter(p=>permitted().includes(p.category_id)).sort(sortPlayers);
