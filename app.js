@@ -370,7 +370,9 @@ function distintaForm(m){
  const values={heading:'VOLLA UNITED - '+(m.opponent||''),competition:m.match_type||'',place:m.field_name||'',date:m.match_date||'',time:(m.kick_off_time||'').slice(0,5),assistant:'',assistant_doc:'',accompanying:'',accompanying_doc:'',referee_officer:'',referee_officer_doc:'',coach:m.coaches_text||'',coach_doc:'',doctor:'',doctor_doc:'',masseur:'',masseur_doc:''};
  const f=(id,label,type='text')=>`<div class="field"><label>${label}</label><input id="df-${id}" type="${type}" value="${esc(values[id]||'')}"></div>`;
  const staff=[['assistant','Assistente arbitro'],['accompanying','Dirigente accompagnatore'],['referee_officer','Dirigente addetto arbitro'],['coach','Allenatore'],['doctor','Medico sociale'],['masseur','Massaggiatore']];
- return `<section class="panel" id="distinta-panel"><h2>📄 Distinta Gara · ${esc(m.opponent||'')}</h2><p class="muted">I campi sono modificabili. Il PDF riproduce il modello ufficiale caricato.</p><div class="fields">${f('heading','Distinta Giocatori partecipanti alla gara')}${f('competition','Campionato')}${f('place','Da disputare a')}${f('date','Il','date')}${f('time','Alle ore','time')}</div><h3>Staff (facoltativo)</h3><div class="fields">${staff.map(([k,label])=>f(k,label)+f(k+'_doc','Documento e/o tessera FIGC n°')).join('')}</div><div class="actions"><button type="button" class="btn" id="create-distinta">📄 Genera PDF distinta</button><button type="button" class="btn alt" id="close-distinta">Chiudi</button></div><p class="muted">C.I. e matricola vengono recuperate dalle schede calciatori.</p></section>`;
+  const convocati=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean);
+  const documenti=`<h3>Documenti dei convocati</h3><p class="muted">C.I. e matricola FIGC sono precaricate dalla scheda del calciatore. Puoi correggerle per questa distinta senza modificare l'archivio.</p><div class="stack">${convocati.map(p=>{const d=detailOf(p.id);return `<div class="item"><strong>${esc(fullName(p))}</strong><div class="fields">${field('df-ci-'+p.id,'Carta identità (C.I.)',d.identity_number||'')}${field('df-figc-'+p.id,'Matricola FIGC',d.figc_number||'')}</div></div>`}).join('')}</div>`;
+ return `<section class="panel" id="distinta-panel"><h2>📄 Distinta Gara · ${esc(m.opponent||'')}</h2><p class="muted">I campi sono modificabili. Il PDF riproduce il modello ufficiale caricato.</p><div class="fields">${f('heading','Distinta Giocatori partecipanti alla gara')}${f('competition','Campionato')}${f('place','Da disputare a')}${f('date','Il','date')}${f('time','Alle ore','time')}</div>${documenti}<h3>Staff (facoltativo)</h3><div class="fields">${staff.map(([k,label])=>f(k,label)+f(k+'_doc','Documento e/o tessera FIGC n°')).join('')}</div><div class="actions"><button type="button" class="btn" id="create-distinta">📄 Genera PDF distinta</button><button type="button" class="btn alt" id="close-distinta">Chiudi</button></div><p class="muted">C.I. e matricola vengono recuperate dalle schede calciatori.</p></section>`;
 }
 function openDistinta(m){
  if(!m||!allowed(m.category_id,'view'))return toast('Non autorizzato');
@@ -421,8 +423,10 @@ async function generateDistinta(m){
    if(parts.length===3){write(parts[2],77,top,8,20);write(parts[1],106,top,8,20);write(parts[0],132,top,8,26)}
    write((p.last_name||'')+' '+(p.first_name||''),164,top,8,145);
    write(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',315,top,7,31,true);
-   write(d.figc_number||'',365,top,7,57);
-   if(d.identity_number){write('C.I.',431,top,7,27);write(d.identity_number,465,top,7,95)}
+   const figc=val('df-figc-'+id)||d.figc_number||'';
+   const ci=val('df-ci-'+id)||d.identity_number||'';
+   write(figc,365,top,7,57);
+   if(ci){write('C.I.',431,top,7,27);write(ci,465,top,7,95)}
  });
  // Nomi staff dentro la colonna centrale; documenti nella colonna a destra.
  const staff=[['assistant',641],['accompanying',660],['referee_officer',679],['coach',699],['doctor',720],['masseur',741]];
@@ -464,14 +468,9 @@ async function exportRosterPdf(){
  const page=pdf.addPage([841.89,595.28]),W=page.getWidth(),H=page.getHeight();
  const ink=rgb(.12,.12,.12),red=rgb(.63,.07,.13),pale=rgb(.95,.95,.95),white=rgb(1,1,1);
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
- const labels={first_name:'Nome',last_name:'Cognome',birth_date:'Nascita',jersey_number:'N.',primary_role:'Ruolo',secondary_role:'Secondo ruolo',team_role:'Qualifica',identity_number:'Carta identita',figc_number:'Matricola FIGC',fiscal_code:'Codice fiscale',tax_code:'Codice fiscale'};
- const hidden=new Set(['id','player_id','category_id','created_at','updated_at','created_by','user_id','photo_url','storage_path']);
- const keys=[...new Set([...list.flatMap(p=>Object.keys(p)),...Array.from(details.values()).flatMap(d=>Object.keys(d))])].filter(k=>!hidden.has(k)&&!['first_name','last_name','secondary_role','active'].includes(k));
- const ordered=['jersey_number','birth_date','primary_role','secondary_role','team_role','fiscal_code','tax_code','identity_number','figc_number'];
- keys.sort((a,b)=>{const x=ordered.indexOf(a),y=ordered.indexOf(b);return (x<0?999:x)-(y<0?999:y)||a.localeCompare(b)});
- const columns=['Calciatore',...keys.map(k=>labels[k]||k.replace(/_/g,' '))];
- const get=(p,k)=>{const v=(k in p?p[k]:(details.get(p.id)||{})[k]);if(k==='team_role')return {captain:'CAP',vice:'VICE',none:'-'}[v]||v||'-';if(v==null||v==='')return '-';return typeof v==='object'?JSON.stringify(v):String(v)};
- const rows=list.map(p=>[`${p.last_name||''} ${p.first_name||''}`.trim(),...keys.map(k=>get(p,k))]);
+ const columns=['Calciatore','N.','Nascita','Ruolo','Qualifica','Carta identita','Matricola FIGC'];
+ const getDetail=p=>details.get(p.id)||{};
+ const rows=list.map(p=>{const d=getDetail(p);return [fullName(p),p.jersey_number??'-',p.birth_date?fmtItalian(p.birth_date):'-',p.primary_role||'-',d.team_role==='captain'?'CAP':d.team_role==='vice'?'VICE':'-',d.identity_number||'-',d.figc_number||'-'].map(String)});
  const margin=20,tableW=W-2*margin,top=H-116,bottom=40,availableH=top-bottom;
  const weights=columns.map((c,i)=>i===0?2.6:c==='Ruolo'?2.1:Math.max(.85,Math.min(1.8,c.length/10)));
  const sum=weights.reduce((x,y)=>x+y,0),widths=weights.map(x=>tableW*x/sum);
