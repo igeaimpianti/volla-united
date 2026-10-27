@@ -1,5 +1,5 @@
 /* Volla United — aggiornamento rapido PWA */
-const CACHE = 'volla-united-v2';
+const CACHE = 'volla-united-v3';
 const CORE = ['./', './index.html', './style.css', './app.js', './config.js'];
 const OPTIONAL = ['./logo.png', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
@@ -46,6 +46,48 @@ self.addEventListener('fetch', event => {
         if (fallback) return fallback;
       }
       return Response.error();
+    }
+  })());
+});
+
+// Notifiche push inviate dal backend (Supabase Edge Function / Web Push).
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let payload = {};
+    try { payload = event.data ? event.data.json() : {}; }
+    catch { payload = { body: event.data?.text() || '' }; }
+    const title = String(payload.title || 'Volla United');
+    const options = {
+      body: String(payload.body || 'Hai una nuova comunicazione.'),
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      tag: String(payload.tag || 'volla-notifica'),
+      renotify: Boolean(payload.renotify),
+      data: { url: typeof payload.url === 'string' ? payload.url : './' }
+    };
+    await self.registration.showNotification(title, options);
+  })());
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const scope = new URL(self.registration.scope);
+    let target;
+    try { target = new URL(event.notification.data?.url || './', scope); }
+    catch { target = scope; }
+    // Evita redirect esterni attraverso i payload delle notifiche.
+    if (target.origin !== scope.origin || !target.pathname.startsWith(scope.pathname)) target = scope;
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = windows.find(client => {
+      try { return new URL(client.url).origin === scope.origin && new URL(client.url).pathname.startsWith(scope.pathname); }
+      catch { return false; }
+    });
+    if (existing) {
+      await existing.focus();
+      if ('navigate' in existing) await existing.navigate(target.href);
+    } else {
+      await self.clients.openWindow(target.href);
     }
   })());
 });
