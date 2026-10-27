@@ -463,14 +463,14 @@ async function exportRosterPdf(){
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
  const labels={first_name:'Nome',last_name:'Cognome',birth_date:'Nascita',jersey_number:'N.',primary_role:'Ruolo',secondary_role:'Secondo ruolo',team_role:'Qualifica',identity_number:'Carta identita',figc_number:'Matricola FIGC',fiscal_code:'Codice fiscale',tax_code:'Codice fiscale'};
  const hidden=new Set(['id','player_id','category_id','created_at','updated_at','created_by','user_id','photo_url','storage_path']);
- const keys=[...new Set([...list.flatMap(p=>Object.keys(p)),...Array.from(details.values()).flatMap(d=>Object.keys(d))])].filter(k=>!hidden.has(k)&&!['first_name','last_name'].includes(k));
+ const keys=[...new Set([...list.flatMap(p=>Object.keys(p)),...Array.from(details.values()).flatMap(d=>Object.keys(d))])].filter(k=>!hidden.has(k)&&!['first_name','last_name','secondary_role','active'].includes(k));
  const ordered=['jersey_number','birth_date','primary_role','secondary_role','team_role','fiscal_code','tax_code','identity_number','figc_number'];
  keys.sort((a,b)=>{const x=ordered.indexOf(a),y=ordered.indexOf(b);return (x<0?999:x)-(y<0?999:y)||a.localeCompare(b)});
  const columns=['Calciatore',...keys.map(k=>labels[k]||k.replace(/_/g,' '))];
  const get=(p,k)=>{const v=(k in p?p[k]:(details.get(p.id)||{})[k]);if(k==='team_role')return {captain:'CAP',vice:'VICE',none:'-'}[v]||v||'-';if(v==null||v==='')return '-';return typeof v==='object'?JSON.stringify(v):String(v)};
  const rows=list.map(p=>[`${p.last_name||''} ${p.first_name||''}`.trim(),...keys.map(k=>get(p,k))]);
  const margin=20,tableW=W-2*margin,top=H-116,bottom=40,availableH=top-bottom;
- const weights=columns.map((c,i)=>i===0?2.25:Math.max(.85,Math.min(1.8,c.length/10)));
+ const weights=columns.map((c,i)=>i===0?2.6:c==='Ruolo'?2.1:Math.max(.85,Math.min(1.8,c.length/10)));
  const sum=weights.reduce((x,y)=>x+y,0),widths=weights.map(x=>tableW*x/sum);
  const wrap=(value,width,size,face)=>{const words=clean(value).split(/\s+/),out=[];let line='';for(const word of words){let next=line?line+' '+word:word;if(face.widthOfTextAtSize(next,size)<=width-6){line=next;continue}if(line){out.push(line);line=''}let part='';for(const ch of word){if(face.widthOfTextAtSize(part+ch,size)>width-6&&part){out.push(part);part=''}part+=ch}line=part}if(line)out.push(line);return out.length?out:['-']};
  // Riduce proporzionalmente il carattere fino a far entrare tutti i dati in una sola pagina.
