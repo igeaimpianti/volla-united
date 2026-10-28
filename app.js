@@ -41,7 +41,30 @@ async function vuEnablePush(){
 }
 const vuPushActivation=()=>vuPushActive?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi notifiche quando tuo figlio viene convocato e un promemoria un’ora prima della partita. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
 function vuRequestedMatch(){return new URLSearchParams(location.search).get('vu_match')}
-async function vuOpenRequestedMatch(){const id=vuRequestedMatch();if(!id||me?.role!=='parent')return;const n=vuNotifications.find(x=>x.match_id===id);page='notifications';render();if(n)await vuOpenNotification(n.id);else{const m=matches.find(x=>x.id===id);const host=document.querySelector('#notification-match-detail');if(m&&host&&m.player_ids?.some(pid=>players.some(p=>p.id===pid)))host.innerHTML=`<section class="panel"><h3>⚽ ${esc(m.opponent)}</h3><p>${esc(dateIt(m.match_date))} · ${esc(m.field_name||'')} · Ore ${esc((m.kick_off_time||'').slice(0,5))}</p></section>`;}history.replaceState(null,'',location.pathname+location.hash)}
+function vuRequestedNotification(){return new URLSearchParams(location.search).get('notification')}
+function vuClearPushUrl(){const u=new URL(location.href);u.searchParams.delete('notification');u.searchParams.delete('vu_match');u.searchParams.delete('notifications');history.replaceState(null,'',u.pathname+u.search+u.hash)}
+async function vuOpenRequestedMatch(){
+ if(me?.role!=='parent')return;
+ const noticeId=vuRequestedNotification(),matchId=vuRequestedMatch(),openInbox=new URLSearchParams(location.search).has('notifications');
+ if(!noticeId&&!matchId&&!openInbox)return;
+ page='notifications';render();
+ if(noticeId){
+   const n=vuNotifications.find(x=>x.id===noticeId);
+   if(n)await vuOpenNotification(n.id);
+   else toast('Notifica non disponibile: apri la campanella per controllare gli avvisi.');
+ }else if(matchId){
+   const n=vuNotifications.find(x=>x.match_id===matchId);
+   if(n)await vuOpenNotification(n.id);
+   else{const m=matches.find(x=>x.id===matchId);if(m&&m.player_ids?.some(pid=>players.some(p=>p.id===pid)))vuShowNotificationMatch(m);}
+ }
+ vuClearPushUrl();
+}
+function vuShowNotificationMatch(m){
+ const host=$('#notification-match-detail');if(!host||!m)return;
+ const authorized=m.player_ids?.some(pid=>players.some(p=>p.id===pid));if(!authorized)return;
+ host.innerHTML=m.status==='completed'?matchDetail(m):`<section class="panel"><h3>⚽ ${esc(m.opponent)}</h3><p>${esc(dateIt(m.match_date))} · ${esc(m.field_name||'')} · Ore ${esc((m.kick_off_time||'').slice(0,5))}</p><p>${esc(m.notice||'')}</p></section>`;
+ host.scrollIntoView({behavior:'smooth',block:'start'});
+}
 
 let vuNotifications=[];
 let vuNotificationError='';
@@ -180,8 +203,9 @@ async function vuOpenNotification(id){
  const n=vuNotifications.find(x=>x.id===id);if(!n)return;
  if(!n.read_at){const {error}=await sb.from('notifications').update({read_at:new Date().toISOString()}).eq('id',id).eq('recipient_id',me.id);if(error){toast(error.message);return}n.read_at=new Date().toISOString()}
  page='notifications';render();
- if(n.match_id){const m=matches.find(x=>x.id===n.match_id);const host=$('#notification-match-detail');if(m&&host){const child=players.find(p=>m.player_ids?.includes(p.id));if(child){host.innerHTML=`<section class="panel"><h3>⚽ ${esc(m.opponent)}</h3><p>${esc(dateIt(m.match_date))} · ${esc(m.field_name||'')} · Ore ${esc((m.kick_off_time||'').slice(0,5))}</p><p>${esc(m.notice||'')}</p></section>`}}}
+ if(n.match_id)vuShowNotificationMatch(matches.find(x=>x.id===n.match_id));
 }
+
 async function vuReadAllNotifications(){const ids=vuNotifications.filter(x=>!x.read_at).map(x=>x.id);if(!ids.length)return;const {error}=await sb.from('notifications').update({read_at:new Date().toISOString()}).eq('recipient_id',me.id).in('id',ids);if(error)return toast(error.message);await vuLoadNotifications();render()}
 const nav=()=>{const parent=me?.role==='parent';const items=parent?[['family','🏠','Area famiglie']]:[['home','🏠','Home'],['players','⚽','Calciatori'],['matches','📋','Convocazioni'],['callhistory','🗂','Storico convocazioni'],['history','🏆','Storico partite'],['attendance','✅','Presenze'],['profile','🪪','Profilo calciatore'],...(me?.role==='admin'?[['admin','⚙️','Setup · Account e categorie']]:[])];return `<header class="top vu-header"><button type="button" class="vu-brand" data-page="${parent?'family':'home'}" aria-label="Torna alla Home"><img src="logo.png" alt="Volla United"><span><strong>VOLLA UNITED</strong><small>${parent?'AREA FAMIGLIE':'TEAM MANAGEMENT'}</small></span></button>${vuBell()}<details class="vu-account"><summary aria-label="Apri menu di ${esc(me?.full_name||'Utente')}">${esc(me?.full_name||'Mister')} <span>⌄</span></summary><nav class="vu-account-menu" aria-label="Menu principale"><div class="vu-account-role">${parent?'Genitore':me?.role==='admin'?'Amministratore':'Mister'}</div>${items.map(([p,i,t])=>`<button type="button" class="vu-account-link ${page===p?'active':''}" data-page="${p}"><span>${i}</span><span>${t}</span></button>`).join('')}<div class="vu-account-separator"></div><button type="button" class="vu-logout" data-action="logout">🚪 Esci dall’account</button></nav></details></header>`};
 const vuStyles=`<style id="vu-nav-style">.vu-header{display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative;z-index:100}.vu-brand{display:flex;align-items:center;gap:10px;border:0;background:none;color:inherit;text-align:left;padding:0;cursor:pointer;min-width:0}.vu-brand img{width:52px;height:52px;object-fit:contain}.vu-brand span{display:flex;flex-direction:column;gap:3px}.vu-brand strong{font-size:16px;letter-spacing:.6px}.vu-brand small{font-size:10px;opacity:.7}.vu-bell{position:relative;flex:none;border:1px solid #7d3646;background:#25171e;color:#fff;border-radius:12px;padding:10px;font-size:20px;cursor:pointer}.vu-bell-count{position:absolute;right:-6px;top:-8px;border-radius:12px;background:#dc244e;color:#fff;font-size:10px;font-weight:800;min-width:18px;padding:3px}.vu-notification{display:flex;flex-direction:column;gap:7px;width:100%;text-align:left;margin:10px 0;padding:14px;background:#24151d;border:1px solid #54313e;border-radius:12px;color:#fff}.vu-notification-new{border-color:#e44b70;background:#351a29}.vu-notification span{font-size:13px}.vu-notification small{opacity:.65}.vu-account{position:relative;min-width:0;max-width:55%}.vu-account summary{cursor:pointer;list-style:none;border:1px solid #7d3646;border-radius:12px;padding:12px;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#25171e}.vu-account summary::-webkit-details-marker{display:none}.vu-account[open] summary{border-color:#cb3558;background:#431827}.vu-account-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:3000;background:#24151d;border:1px solid #7d3646;border-radius:15px;width:min(310px,calc(100vw - 32px));padding:10px;box-shadow:0 16px 40px #000b;max-height:min(75vh,650px);overflow-y:auto;-webkit-overflow-scrolling:touch}.vu-account-role{font-size:12px;opacity:.65;padding:9px 12px 12px}.vu-account-menu button{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border:0;border-radius:9px;background:transparent;color:#fff;text-align:left;font-size:14px;cursor:pointer}.vu-account-menu button.active{background:#9e1d3a;font-weight:700}.vu-account-menu button:hover{background:#673043}.vu-account-menu button span:first-child{width:24px;text-align:center}.vu-account-separator{height:1px;background:#693343;margin:8px 3px}.vu-account-menu .vu-logout{color:#ffbeca}@media(max-width:650px){.shell{padding-bottom:18px}.vu-header{padding:8px 0}.vu-brand img{width:43px;height:43px}.vu-brand strong{font-size:13px}.vu-brand small{font-size:9px}.vu-account summary{font-size:12px;padding:11px}.vu-account-menu{max-height:75dvh}}</style>`;
@@ -740,7 +764,7 @@ let wasBackgrounded=false;
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState==='hidden'){wasBackgrounded=true;return}
   if(document.visibilityState==='visible'&&wasBackgrounded){
-    wasBackgrounded=false;if(vuRequestedMatch()){vuOpenRequestedMatch();return}page='home';editing=null;draft=null;selected=[];
+    wasBackgrounded=false;if(vuRequestedMatch()||vuRequestedNotification()){vuOpenRequestedMatch();return}page='home';editing=null;draft=null;selected=[];
     if(me&&!me.must_change_password)render();
   }
 });
