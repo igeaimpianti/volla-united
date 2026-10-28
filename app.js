@@ -294,8 +294,8 @@ function attendancePage(){
   });
   const editable=me.role==='admin'||access.some(a=>a.category_id===currentCat);
   return `<h2>✅ Presenze allenamenti</h2>${catSelector()}<section class="panel"><h3>Registro allenamento</h3>${field('training-date','Data allenamento',attendanceDate,'date')}
-    <p class="muted">${sess?'Allenamento già registrato: puoi aggiornare le presenze.':'Nuovo allenamento: seleziona i presenti e salva.'}</p>
-    <div class="stack">${ps.map(p=>`<label class="check" style="display:flex;align-items:center;gap:12px"><input type="checkbox" data-attend="${esc(p.id)}" ${rows.find(r=>r.player_id===p.id)?.present?'checked':''} ${!editable?'disabled':''}><span>${esc(fullName(p))}</span></label>`).join('')||'<p class="empty">Nessun calciatore nella categoria</p>'}</div>
+    <p class="muted">${sess?'Allenamento già registrato: puoi aggiornare le presenze.':'Nuovo allenamento: tutti presenti. Togli la spunta soltanto agli assenti.'}</p>
+    <div class="stack">${ps.map(p=>`<label class="check" style="display:flex;align-items:center;gap:12px"><input type="checkbox" data-attend="${esc(p.id)}" ${sess?(rows.find(r=>r.player_id===p.id)?.present?'checked':''):'checked'} ${!editable?'disabled':''}><span>${esc(fullName(p))}</span></label>`).join('')||'<p class="empty">Nessun calciatore nella categoria</p>'}</div>
     ${editable?'<div class="actions"><button class="btn" id="save-attendance">💾 Salva presenze</button>'+(sess?'<button class="btn alt" id="delete-attendance-day" type="button">🗑 Elimina questo allenamento</button>':'')+'</div>':''}</section>
     <section class="panel"><h3>Statistiche e PDF</h3><div class="fields">${field('att-from','Dal',from,'date')}${field('att-to','Al',to,'date')}
     <div class="field"><label>Allievo</label><select id="att-player"><option value="">Tutti gli allievi</option>${ps.map(p=>`<option value="${esc(p.id)}" ${attendancePlayer===p.id?'selected':''}>${esc(fullName(p))}</option>`).join('')}</select></div></div>
