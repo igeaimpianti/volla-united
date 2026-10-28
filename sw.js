@@ -1,5 +1,5 @@
 /* Volla United — aggiornamento rapido PWA */
-const CACHE = 'volla-united-v3';
+const CACHE = 'volla-united-v4-push';
 const CORE = ['./', './index.html', './style.css', './app.js', './config.js'];
 const OPTIONAL = ['./logo.png', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 
