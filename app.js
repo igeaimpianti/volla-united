@@ -11,13 +11,16 @@ let matchScorers=[];
 const VU_VAPID_PUBLIC_KEY='BDEBTIz1Y5JOw4sv_XCTIz15de3yXzV8u7h92j47jktL2iBK_qM_b11fHqCZ3P8FO8zjBm9Jzg2i_y0aw8Na14I';
 function vuDecodeVapid(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))}
 let vuPushActive=false;
+let vuDeviceSubscribed=false;
 async function vuCheckPush(){
  vuPushActive=false;
+ vuDeviceSubscribed=false;
  if(!['parent','coach','admin'].includes(me?.role)||!sb||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)||Notification.permission!=='granted')return;
  try{
   const reg=await navigator.serviceWorker.ready;
   const sub=await reg.pushManager.getSubscription();
   if(!sub)return;
+  vuDeviceSubscribed=true;
   const {data,error}=await sb.from('push_subscriptions').select('id').eq('user_id',me.id).eq('endpoint',sub.endpoint).limit(1);
   if(error)throw error;
   vuPushActive=!!data?.length;
@@ -35,11 +38,12 @@ async function vuEnablePush(){
   const {error}=await sb.from('push_subscriptions').upsert({user_id:me.id,endpoint:json.endpoint,p256dh:json.keys.p256dh,auth_key:json.keys.auth,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
   if(error)throw error;
   vuPushActive=true;
+  vuDeviceSubscribed=true;
   toast('🔔 Notifiche push attivate su questo dispositivo');
   render();
  }catch(err){console.error('Web Push:',err);toast(err.message||'Impossibile attivare le notifiche')}finally{if(button?.isConnected)button.disabled=false}
 }
-const vuPushActivation=()=>vuPushActive?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi gli avvisi Volla United, inclusi i compleanni dei calciatori della tua categoria. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
+const vuPushActivation=()=>vuDeviceSubscribed?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi gli avvisi Volla United, inclusi i compleanni dei calciatori della tua categoria. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
 function vuRequestedMatch(){return new URLSearchParams(location.search).get('vu_match')}
 function vuRequestedNotification(){return new URLSearchParams(location.search).get('notification')}
 function vuClearPushUrl(){const u=new URL(location.href);u.searchParams.delete('notification');u.searchParams.delete('vu_match');u.searchParams.delete('notifications');history.replaceState(null,'',u.pathname+u.search+u.hash)}
@@ -200,16 +204,16 @@ async function vuLoadNotifications(){
 // Gli auguri WhatsApp sono disponibili solo ai mister/admin, mai ai genitori.
 // Il nome viene letto dal testo generato dal server per il compleanno.
 function vuBirthdayShareButton(n){
- if(!['coach','admin'].includes(me?.role)||!String(n.title||'').includes('Compleanno calciatore'))return '';
- const found=String(n.body||'').match(/compleanno di (.+?)! Compie /i);
+ if(!['coach','admin'].includes(me?.role)||!/Compleanno calciatore/i.test(String(n.title||'')))return '';
+ const found=String(n.body||'').match(/compleanno di\s+(.+?)!(?:\s|$)/i);
  if(!found)return '';
  const name=found[1].trim();
  return `<button type="button" class="btn sm" data-birthday-share="${esc(n.id)}">🟢 Invia auguri a ${esc(name)} su WhatsApp</button>`;
 }
 function vuShareBirthday(id){
  const n=vuNotifications.find(x=>x.id===id);
- if(!n||!['coach','admin'].includes(me?.role)||!String(n.title||'').includes('Compleanno calciatore'))return;
- const found=String(n.body||'').match(/compleanno di (.+?)! Compie /i);
+ if(!n||!['coach','admin'].includes(me?.role)||!/Compleanno calciatore/i.test(String(n.title||'')))return;
+ const found=String(n.body||'').match(/compleanno di\s+(.+?)!(?:\s|$)/i);
  if(!found)return toast('Nome del calciatore non disponibile');
  const name=found[1].trim();
  shareWhatsApp(`🎂⚽ Tanti auguri ${name}! 🎉❤️🖤\nTutta la Volla United Academy ti augura un fantastico compleanno! ⚽🏆`);
