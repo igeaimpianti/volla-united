@@ -12,11 +12,13 @@ const VU_VAPID_PUBLIC_KEY='BDEBTIz1Y5JOw4sv_XCTIz15de3yXzV8u7h92j47jktL2iBK_qM_b
 function vuDecodeVapid(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))}
 let vuPushActive=false;
 let vuDeviceSubscribed=false;
+let vuPushChecked=false;
 async function vuCheckPush(){
  vuPushActive=false;
  vuDeviceSubscribed=false;
- if(!['parent','coach','admin'].includes(me?.role)||!sb||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)||Notification.permission!=='granted')return;
+ vuPushChecked=false;
  try{
+  if(!['parent','coach','admin'].includes(me?.role)||!sb||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)||Notification.permission!=='granted')return;
   const reg=await navigator.serviceWorker.ready;
   const sub=await reg.pushManager.getSubscription();
   if(!sub)return;
@@ -25,6 +27,13 @@ async function vuCheckPush(){
   if(error)throw error;
   vuPushActive=!!data?.length;
  }catch(e){console.warn('Verifica iscrizione push:',e)}
+ finally{vuPushChecked=true}
+}
+async function vuRefreshPushDisplay(){
+ if(!me||!['parent','coach','admin'].includes(me.role))return;
+ await vuCheckPush();
+ const panel=document.querySelector('#vu-push-activation');
+ if(panel)panel.hidden=vuPushActive;
 }
 async function vuEnablePush(){
  const button=document.querySelector('#vu-enable-push');if(button)button.disabled=true;
@@ -43,7 +52,7 @@ async function vuEnablePush(){
   render();
  }catch(err){console.error('Web Push:',err);toast(err.message||'Impossibile attivare le notifiche')}finally{if(button?.isConnected)button.disabled=false}
 }
-const vuPushActivation=()=>vuDeviceSubscribed?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi gli avvisi Volla United, inclusi i compleanni dei calciatori della tua categoria. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
+const vuPushActivation=()=>`<section id="vu-push-activation" ${!vuPushChecked||vuPushActive?'hidden':''} class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi gli avvisi Volla United, inclusi i compleanni dei calciatori della tua categoria. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
 function vuRequestedMatch(){return new URLSearchParams(location.search).get('vu_match')}
 function vuRequestedNotification(){return new URLSearchParams(location.search).get('notification')}
 function vuClearPushUrl(){const u=new URL(location.href);u.searchParams.delete('notification');u.searchParams.delete('vu_match');u.searchParams.delete('notifications');history.replaceState(null,'',u.pathname+u.search+u.hash)}
@@ -788,6 +797,8 @@ function bindParentsAdmin(){ getNewParentChildren=bindParentChildPicker('new-par
 async function parentAdminAction(action,id){const u=users.find(x=>x.id===id&&x.role==='parent');if(!u)throw Error('Genitore non trovato');if(action==='children-parent'){const r=await adminCall({action:'get-children',user_id:id});const old=r.player_ids||[];const overlay=document.createElement('div');overlay.id='children-overlay';overlay.className='panel';overlay.style.cssText='position:fixed;inset:5%;overflow:auto;z-index:999;background:#211921;border:2px solid #c49a45;box-shadow:0 0 0 999px #000b';overlay.innerHTML=`<h3>Figli di ${esc(u.full_name)}</h3>${parentChildPicker('edit-parent',old)}<div class="actions"><button class="btn" id="save-children">Salva</button><button class="btn alt" id="close-children">Chiudi</button></div>`;document.body.appendChild(overlay);const getEditedChildren=bindParentChildPicker('edit-parent',old);$('#close-children').onclick=()=>overlay.remove();$('#save-children').onclick=async()=>{try{const ids=getEditedChildren();await adminCall({action:'set-children',user_id:id,player_ids:ids});overlay.remove();toast('Figli aggiornati')}catch(err){toast(err.message)}};return}if(action==='edit-parent'){const name=prompt('Nome e cognome:',u.full_name);if(name===null||!name.trim())return;const r=await sb.from('profiles').update({full_name:name.trim()}).eq('id',id);if(r.error)throw r.error;await load();return}if(action==='reset-parent'){if(!confirm('Generare una nuova password?'))return;const r=await adminCall({action:'reset',user_id:id});alert('Password temporanea: '+r.temporary_password);return}const active=action==='restore-parent';if(!confirm(`${active?'Riattivare':'Archiviare'} ${u.full_name}?`))return;await adminCall({action:'set-active',user_id:id,active});await load();toast('Account aggiornato')}
 
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js', {updateViaCache:'none'}).then(r=>r.update()).catch(console.warn);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)vuRefreshPushDisplay()});
+window.addEventListener('focus',()=>vuRefreshPushDisplay());
 if(sb){sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'){me=null;page='home';editing=null;draft=null;selected=[];currentCat='';login()}});load()}else login();
 
 // Quando iOS mantiene la PWA in memoria, non modificare pagina o form
