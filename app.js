@@ -750,6 +750,34 @@ function familyPage(){
  if(!p)return `<section class="panel"><h2>👨‍👩‍👧‍👦 Area famiglie</h2><p>Nessun bambino associato a questo account. Contatta l'amministratore.</p></section>`;
  return `${vuProfilePhotoCss}${vuPushActivation()}<h2>👨‍👩‍👧‍👦 I miei figli</h2>${players.length>1?`<div class="field"><label>Seleziona bambino</label><select id="child-select">${players.map(x=>`<option value="${x.id}" ${x.id===p.id?'selected':''}>${esc(x.first_name+' '+x.last_name)}</option>`).join('')}</select></div>`:''}${playerFamilyContent(p)}`;
 }
+// Riepilogo della stagione sportiva: dal 1 settembre al 31 agosto.
+function vuSeasonSummary(p){
+ const today=new Date(),startYear=today.getMonth()>=8?today.getFullYear():today.getFullYear()-1;
+ const start=`${startYear}-09-01`,end=`${startYear+1}-08-31`;
+ const completed=matches.filter(m=>m.status==='completed'&&m.match_date>=start&&m.match_date<=end);
+ const played=completed.filter(m=>m.played_ids?.includes(p.id));
+ const training=sessions.filter(s=>s.category_id===p.category_id&&s.training_date>=start&&s.training_date<=end);
+ const entries=training.map(s=>attendance.find(a=>a.session_id===s.id&&a.player_id===p.id)).filter(Boolean);
+ const present=entries.filter(a=>a.present).length;
+ const goals=id=>completed.filter(m=>m.played_ids?.includes(id)).reduce((sum,m)=>sum+(matchScorersFor(m).find(x=>x.player_id===id)?.goals||0),0);
+ const myGoals=goals(p.id),keeper=p.primary_role==='Portiere';
+ const categoryPlayers=players.filter(x=>x.category_id===p.category_id&&x.primary_role!=='Portiere');
+ const best=Math.max(0,...categoryPlayers.map(x=>goals(x.id)));
+ const topScorer=!keeper&&myGoals>0&&myGoals===best;
+ // Clean sheet di squadra: nessun gol subito nella partita giocata.
+ // Per i tornei con solo piazzamento non esiste un risultato difensivo verificabile.
+ const cleanSheets=played.filter(m=>!isTournament(m)&&Number(m.goals_against)===0).length;
+ const tournaments=played.filter(isTournament);
+ return `<section class="panel"><h3>🏆 Riepilogo stagione ${startYear}/${startYear+1}</h3>
+ ${topScorer?'<p style="font-weight:800;color:#ffcf65">🥇 Capocannoniere della categoria</p>':''}
+ <div class="grid"><div class="item"><strong>${played.length}</strong><small>Partite giocate</small></div>
+ <div class="item"><strong>${present}/${entries.length}</strong><small>Allenamenti presenti</small></div>
+ <div class="item"><strong>${entries.length?Math.round(100*present/entries.length):0}%</strong><small>Presenza allenamenti</small></div>
+ <div class="item"><strong>${keeper?cleanSheets:myGoals}</strong><small>${keeper?'Clean sheet di squadra':'Gol segnati'}</small></div>
+ <div class="item"><strong>${tournaments.length}</strong><small>Tornei disputati</small></div></div>
+ ${keeper?'<p class="muted">Clean sheet conteggiati solo nelle partite giocate con zero gol subiti dalla squadra. Non attestano i minuti effettivi in porta.</p>':''}
+ </section>`;
+}
 function playerFamilyContent(p,staffView=false){
  const now=new Date().toLocaleDateString('en-CA');
  const childMatches=matches.filter(m=>m.player_ids?.includes(p.id)).sort((a,b)=>a.match_date.localeCompare(b.match_date));
@@ -759,7 +787,7 @@ function playerFamilyContent(p,staffView=false){
  const trainings=sessions.filter(s=>s.category_id===p.category_id).sort((a,b)=>b.training_date.localeCompare(a.training_date));
  const records=trainings.map(s=>({s,a:attendance.find(a=>a.session_id===s.id&&a.player_id===p.id)})).filter(x=>x.a);
  const present=records.filter(x=>x.a.present).length;
- return `<section class="panel"><h3>${esc(p.first_name)} ${esc(p.last_name)}</h3><p class="muted">${esc(cats.find(c=>c.id===p.category_id)?.name||'')} · ${esc(p.primary_role)} · ${p.jersey_number?'Maglia '+esc(p.jersey_number):'Numero non assegnato'}</p><div class="grid"><div class="item"><strong>${records.length?Math.round(present/records.length*100):0}%</strong><small>Allenamenti</small></div><div class="item"><strong>${past.length}</strong><small>Partite giocate</small></div><div class="item"><strong>${past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0)}</strong><small>Gol fatti</small></div></div>${playerProfilePhoto(p)}</section><section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small></div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(isTournament(m)?matchLabel(m):`Volla United ${m.goals_for} – ${m.goals_against} ${m.opponent}`)}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
+ return `<section class="panel"><h3>${esc(p.first_name)} ${esc(p.last_name)}</h3><p class="muted">${esc(cats.find(c=>c.id===p.category_id)?.name||'')} · ${esc(p.primary_role)} · ${p.jersey_number?'Maglia '+esc(p.jersey_number):'Numero non assegnato'}</p><div class="grid"><div class="item"><strong>${records.length?Math.round(present/records.length*100):0}%</strong><small>Allenamenti</small></div><div class="item"><strong>${past.length}</strong><small>Partite giocate</small></div><div class="item"><strong>${past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0)}</strong><small>Gol fatti</small></div></div>${playerProfilePhoto(p)}</section>${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small></div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(isTournament(m)?matchLabel(m):`Volla United ${m.goals_for} – ${m.goals_against} ${m.opponent}`)}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
 }
 function bindFamily(){ $('#child-select')?.addEventListener('change',e=>{activeChild=e.target.value;render()}) }
 function parentChildPicker(prefix, selectedIds=[]){
