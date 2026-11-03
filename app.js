@@ -837,6 +837,35 @@ function vuSeasonSummary(p){
  ${keeper?'<p class="muted">Clean sheet conteggiati solo nelle partite giocate con zero gol subiti dalla squadra. Non attestano i minuti effettivi in porta.</p>':''}
  </section>`;
 }
+const vuLuxuryProfileCss=`<style>
+.vu-luxury{overflow:hidden;border-radius:24px;background:#101015;border:1px solid #4c2632;box-shadow:0 18px 55px #0005;margin:14px 0 22px;color:#fff}
+.vu-luxury-cover{position:relative;isolation:isolate;min-height:320px;display:flex;flex-direction:column;justify-content:flex-end;padding:28px 22px 24px;background:radial-gradient(ellipse at 80% 30%,#82263d 0%,#351723 43%,#121217 83%)}
+.vu-luxury-cover:before{content:'';position:absolute;inset:0;background:linear-gradient(150deg,transparent 40%,#0009 100%);z-index:-1}
+.vu-luxury-cover:after{content:'';position:absolute;right:-40px;top:15px;width:190px;height:190px;border:1px solid #ffffff22;border-radius:50%;z-index:-1}
+.vu-luxury-kicker{font-size:10px;font-weight:800;letter-spacing:2.3px;color:#ffbdca;position:relative;z-index:2}
+.vu-luxury-portrait{position:relative;align-self:center;width:min(100%,310px);max-height:340px;object-fit:contain;filter:drop-shadow(0 14px 20px #0008);margin:10px auto 8px;border-radius:12px}
+.vu-luxury-name{position:relative;z-index:2;font-size:clamp(29px,8vw,48px);font-weight:900;line-height:1.04;letter-spacing:-1.1px;overflow-wrap:anywhere;text-shadow:0 3px 18px #0008}
+.vu-luxury-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:2}
+.vu-luxury-meta span{font-size:11px;letter-spacing:.5px;border:1px solid #ffffff45;background:#ffffff12;border-radius:999px;padding:8px 11px}
+.vu-luxury-body{padding:21px 17px 22px}
+.vu-luxury-heading{font-size:11px;font-weight:800;letter-spacing:2px;color:#e8a9ba;margin-bottom:13px}
+.vu-luxury-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.vu-luxury-stat{background:#211b24;border:1px solid #48313d;border-radius:14px;padding:16px 7px;text-align:center}
+.vu-luxury-stat strong{display:block;font-size:clamp(24px,7vw,34px);line-height:1.2;font-variant-numeric:tabular-nums;color:#fff}
+.vu-luxury-stat small{display:block;margin-top:7px;font-size:10px;letter-spacing:.4px;color:#d8c4cd}
+.vu-luxury-accent{height:3px;width:54px;background:linear-gradient(90deg,#d73559,#ffc8a0);border-radius:4px;margin-bottom:14px}
+.vu-luxury-note{margin-top:14px;color:#c8b8c0;font-size:12px;line-height:1.6}
+@media(min-width:720px){.vu-luxury-cover{min-height:360px;padding:32px 36px}.vu-luxury-body{padding:28px 36px}.vu-luxury-portrait{max-height:360px}}
+@media(prefers-reduced-motion:no-preference){.vu-luxury{animation:vuLuxuryReveal .45s ease-out both}@keyframes vuLuxuryReveal{from{opacity:.5;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}}
+</style>`;
+function vuLuxuryHero(p,playedCount,goalsCount,attendancePct){
+ const category=upper(cats.find(c=>c.id===p.category_id)?.name||'');
+ const role=upper(p.primary_role||'CALCIATORE');
+ const isKeeper=p.primary_role==='Portiere';
+ const src=photoOf(p.id);
+ const qualification=detailOf(p.id).team_role;
+ return `${vuLuxuryProfileCss}<section class="vu-luxury" aria-label="Profilo di ${esc(fullName(p))}"><div class="vu-luxury-cover"><div class="vu-luxury-kicker">VOLLA UNITED ACADEMY · PROFILO UFFICIALE</div>${src?`<img class="vu-luxury-portrait" src="${esc(src)}" alt="Foto ufficiale di ${esc(fullName(p))}" loading="lazy">`:`<div class="vu-player-photo-empty">FOTO UFFICIALE NON ANCORA CARICATA</div>`}<div class="vu-luxury-name">${esc(upper(p.first_name))}<br>${esc(upper(p.last_name))}</div><div class="vu-luxury-meta"><span>${esc(category)}</span><span>${esc(role)}</span>${p.jersey_number!=null&&p.jersey_number!==''?`<span>MAGLIA N° ${esc(p.jersey_number)}</span>`:''}${qualification==='captain'?'<span>CAPITANO</span>':qualification==='vice'?'<span>VICECAPITANO</span>':''}</div></div><div class="vu-luxury-body"><div class="vu-luxury-accent"></div><div class="vu-luxury-heading">LA MIA STAGIONE</div><div class="vu-luxury-stats"><div class="vu-luxury-stat"><strong>${playedCount}</strong><small>PARTITE</small></div><div class="vu-luxury-stat"><strong>${isKeeper?'—':goalsCount}</strong><small>${isKeeper?'GOL NON PREVISTI':'GOL SEGNATI'}</small></div><div class="vu-luxury-stat"><strong>${attendancePct}%</strong><small>ALLENAMENTI</small></div></div><div class="vu-luxury-note">I NUMERI SI AGGIORNANO CON I RISULTATI E LE PRESENZE REGISTRATI DAI MISTER.</div></div></section>`;
+}
 function playerFamilyContent(p,staffView=false){
  const now=new Date().toLocaleDateString('en-CA');
  const childMatches=matches.filter(m=>m.player_ids?.includes(p.id)).sort((a,b)=>a.match_date.localeCompare(b.match_date));
@@ -846,7 +875,7 @@ function playerFamilyContent(p,staffView=false){
  const trainings=sessions.filter(s=>s.category_id===p.category_id).sort((a,b)=>b.training_date.localeCompare(a.training_date));
  const records=trainings.map(s=>({s,a:attendance.find(a=>a.session_id===s.id&&a.player_id===p.id)})).filter(x=>x.a);
  const present=records.filter(x=>x.a.present).length;
- return `<section class="panel"><h3>${esc(p.first_name)} ${esc(p.last_name)}</h3><p class="muted">${esc(cats.find(c=>c.id===p.category_id)?.name||'')} · ${esc(p.primary_role)} · ${p.jersey_number?'Maglia '+esc(p.jersey_number):'Numero non assegnato'}</p><div class="grid"><div class="item"><strong>${records.length?Math.round(present/records.length*100):0}%</strong><small>Allenamenti</small></div><div class="item"><strong>${past.length}</strong><small>Partite giocate</small></div><div class="item"><strong>${past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0)}</strong><small>Gol fatti</small></div></div>${playerProfilePhoto(p)}</section>${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small></div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
+ return `${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small></div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
 }
 function bindFamily(){ $('#child-select')?.addEventListener('change',e=>{activeChild=e.target.value;render()}) }
 function parentChildPicker(prefix, selectedIds=[]){
