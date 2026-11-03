@@ -764,8 +764,8 @@ const vuFilterCss=`<style>
 .vu-photo-frame{position:relative;display:table;max-width:min(100%,420px);margin:18px auto;overflow:hidden;border-radius:16px;background:#171219;isolation:isolate}
 .vu-photo-frame .vu-player-photo{display:block;width:100%;max-width:100%;max-height:540px;margin:0;border-radius:0}
 .vu-photo-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:2}
-.vu-photo-particle{position:absolute;left:var(--x);top:-12%;font-size:var(--sz);line-height:1;opacity:0;will-change:transform,opacity;animation:vu-photo-fall var(--dur) linear infinite;animation-delay:var(--delay);filter:drop-shadow(0 0 3px #fff9)}
-@keyframes vu-photo-fall{0%{transform:translate3d(0,-30px,0) rotate(0);opacity:0}12%{opacity:.92}85%{opacity:.92}100%{transform:translate3d(var(--drift),600px,0) rotate(280deg);opacity:0}}
+.vu-photo-particle{position:absolute;left:var(--x);top:-12%;font-size:var(--sz);line-height:1;opacity:0;will-change:transform,opacity;animation:vu-photo-fall var(--dur) linear infinite;animation-delay:var(--delay);filter:none;backface-visibility:hidden;contain:layout style paint}
+@keyframes vu-photo-fall{0%{transform:translate3d(0,-30px,0) rotate(0);opacity:0}12%{opacity:.92}85%{opacity:.92}100%{transform:translate3d(var(--drift),var(--vu-fall-distance,650px),0) rotate(280deg);opacity:0}}
 .vu-photo-overlay[data-filter="newyear"] .vu-photo-particle{top:var(--y);animation:vu-photo-firework var(--dur) ease-in-out infinite;animation-delay:var(--delay);filter:drop-shadow(0 0 5px #ffe18b)}
 @keyframes vu-photo-firework{0%,100%{transform:translate3d(0,0,0) scale(.2);opacity:0}22%{opacity:0}45%{transform:translate3d(var(--drift),-18px,0) scale(1.5);opacity:1}65%{transform:translate3d(calc(var(--drift) * -1),15px,0) scale(.8);opacity:.95}85%{opacity:0}}
 .vu-photo-overlay[data-filter="summer"] .vu-photo-particle{top:var(--y);animation:vu-photo-summer var(--dur) ease-in-out infinite;animation-delay:var(--delay);filter:drop-shadow(0 0 6px #ffe17c)}
@@ -783,13 +783,13 @@ const vuFilterCss=`<style>
 .vu-club-hero>.vu-photo-overlay .vu-photo-particle{animation-name:vu-hero-fall}
 .vu-club-hero>.vu-photo-overlay[data-filter="newyear"] .vu-photo-particle{animation-name:vu-photo-firework}
 .vu-club-hero>.vu-photo-overlay[data-filter="summer"] .vu-photo-particle{animation-name:vu-photo-summer}
-@keyframes vu-hero-fall{0%{top:-10%;transform:translate3d(0,-20px,0) rotate(0);opacity:0}12%{opacity:.92}85%{opacity:.92}100%{top:105%;transform:translate3d(var(--drift),0,0) rotate(280deg);opacity:0}}
+@keyframes vu-hero-fall{0%{transform:translate3d(0,-20px,0) rotate(0);opacity:0}12%{opacity:.92}85%{opacity:.92}100%{transform:translate3d(var(--drift),var(--vu-fall-distance,650px),0) rotate(280deg);opacity:0}}
 @media(prefers-reduced-motion:reduce){.vu-photo-particle,.vu-photo-greeting,.vu-photo-overlay[data-filter="summer"]:before{animation:none;opacity:.65}}
 </style>`;
 function vuPhotoParticles(filter){
  const symbols={christmas:['❄','❅','❆'],newyear:['✦','✨','✧','✷','✹','🎆'],easter:['🌸','🦋','🌼'],mother:['💗','🌸','💕'],father:['💙','⭐','✨'],summer:['✦','✨','☀','✧','🌟'],halloween:['🦇','🎃','✦'],carnival:['🎊','✦','●'],birthday:['🎈','🎉','🎊']}[filter];
  if(!symbols)return '';
- const count=filter==='newyear'?0:80; // 80 elementi per ogni ricorrenza; Capodanno usa Canvas
+ const count=filter==='newyear'?0:70; // 70 elementi; Capodanno usa Canvas
  const particles=Array.from({length:count},(_,i)=>{
   const x=(i*47+13)%96,y=8+(i*29)%78,sz=12+(i*7)%15,dur=filter==='newyear'?2.3+(i%6)*.4:filter==='summer'?3+(i%7)*.6:4+(i%8)*.7,delay=-(i*.83)%9,drift=(i%2?1:-1)*(15+(i*13)%80);
   return `<span class="vu-photo-particle" style="--x:${x}%;--y:${y}%;--sz:${sz}px;--dur:${dur}s;--delay:${delay}s;--drift:${drift}px">${symbols[i%symbols.length]}</span>`;
@@ -806,15 +806,21 @@ function vuStartFireworks(canvas){
  const random=(a,b)=>a+Math.random()*(b-a);
  function resize(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,2);width=r.width;height=r.height;canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
  function launch(){if(width<10||height<10)return;const x=random(width*.15,width*.85),targetY=random(height*.12,height*.57);rockets.push({x,y:height+8,px:x,py:height+8,vx:random(-.65,.65),vy:random(-10.8,-8.2),targetY,hue:palette[Math.floor(random(0,palette.length))],trail:[]})}
- function burst(r){if(sparks.length>650)sparks.splice(0,sparks.length-650);const n=80+Math.floor(Math.random()*31),power=random(2.2,4.9),base=palette[Math.floor(random(0,palette.length))];for(let i=0;i<n;i++){const a=Math.PI*2*i/n+random(-.13,.13),speed=power*random(.48,1.23),color=Math.random()<.68?base:palette[Math.floor(random(0,palette.length))];sparks.push({x:r.x,y:r.y,px:r.x,py:r.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,life:random(42,85),max:85,color,size:random(.8,2.1),drag:random(.969,.988)})}}
+ function burst(r){if(sparks.length>850)sparks.splice(0,sparks.length-850);const n=80+Math.floor(Math.random()*31),power=random(2.2,4.9),base=palette[Math.floor(random(0,palette.length))];for(let i=0;i<n;i++){const a=Math.PI*2*i/n+random(-.13,.13),speed=power*random(.48,1.23),color=Math.random()<.68?base:palette[Math.floor(random(0,palette.length))];sparks.push({x:r.x,y:r.y,px:r.x,py:r.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,life:random(42,85),max:85,color,size:random(.8,2.1),drag:random(.969,.988)})}}
  function draw(t){if(!alive)return;if(!canvas.isConnected){alive=false;vuFireworksRunning.delete(canvas);return}if(document.hidden){last=t;requestAnimationFrame(draw);return}if(!width||!height)resize();if(!width||!height){requestAnimationFrame(draw);return}const dt=Math.min(2.0,(t-last||16.7)/16.7);last=t;frame+=dt;ctx.clearRect(0,0,width,height);ctx.globalCompositeOperation='lighter';
- if(t>=launchAt){launch();if(Math.random()<.33)launch();launchAt=t+random(430,900)}
+ if(t>=launchAt){launch();if(Math.random()<.42)launch();launchAt=t+random(330,650)}
  for(let i=rockets.length-1;i>=0;i--){const r=rockets[i];r.px=r.x;r.py=r.y;r.x+=r.vx*dt;r.y+=r.vy*dt;r.vy+=.09*dt;r.trail.push({x:r.x,y:r.y});if(r.trail.length>14)r.trail.shift();for(let j=1;j<r.trail.length;j++){const a=r.trail[j-1],b=r.trail[j];ctx.strokeStyle=`rgba(255,207,122,${j/r.trail.length*.78})`;ctx.lineWidth=1.6*j/r.trail.length;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}ctx.fillStyle='#fff5d9';ctx.beginPath();ctx.arc(r.x,r.y,2.5,0,Math.PI*2);ctx.fill();if(r.y<=r.targetY||r.vy>=-1){burst(r);rockets.splice(i,1)}}
  for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.px=s.x;s.py=s.y;s.x+=s.vx*dt;s.y+=s.vy*dt;s.vx*=Math.pow(s.drag,dt);s.vy=s.vy*Math.pow(s.drag,dt)+.058*dt;s.life-=dt;if(s.life<=0){sparks.splice(i,1);continue}const a=Math.min(1,s.life/24);ctx.globalAlpha=a;ctx.strokeStyle=s.color;ctx.lineWidth=s.size;ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();if(i%4===0){ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(s.x,s.y,s.size*.8,0,Math.PI*2);ctx.fill()}}
  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';requestAnimationFrame(draw)}
  resize();vuFireworksRunning.set(canvas,true);requestAnimationFrame(draw);
 }
-function vuInitProfileFireworks(){document.querySelectorAll('.vu-club-hero .vu-fireworks-canvas').forEach(vuStartFireworks)}
+function vuInitProfileFireworks(){
+ document.querySelectorAll('.vu-club-hero .vu-fireworks-canvas').forEach(vuStartFireworks);
+ document.querySelectorAll('.vu-club-hero > .vu-photo-overlay, .vu-photo-frame > .vu-photo-overlay').forEach(overlay=>{
+  const h=overlay.getBoundingClientRect().height;
+  if(h>0)overlay.style.setProperty('--vu-fall-distance',Math.ceil(h*1.22+50)+'px');
+ });
+}
 if(typeof document!=='undefined'){
  const vuWatchFireworks=()=>{vuInitProfileFireworks();const observer=new MutationObserver(()=>vuInitProfileFireworks());observer.observe(document.body,{childList:true,subtree:true})};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',vuWatchFireworks,{once:true});else vuWatchFireworks();
