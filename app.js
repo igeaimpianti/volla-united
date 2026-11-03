@@ -776,7 +776,10 @@ const vuFilterCss=`<style>
 .vu-photo-greeting span{display:inline-block;max-width:100%;padding:8px 12px;border-radius:12px;background:#170e17a8;border:1px solid #ffffff55}
 @keyframes vu-photo-greeting{from{transform:scale(.97);opacity:.85}to{transform:scale(1.04);opacity:1}}
 .vu-club-hero>.vu-photo-overlay{z-index:4;inset:0;border-radius:inherit}
-.vu-club-hero>.vu-photo-greeting{z-index:5;bottom:2%;font-size:clamp(12px,3.1vw,17px)}
+.vu-club-hero>.vu-photo-greeting{z-index:5;bottom:14px;left:14px;right:14px;font-size:clamp(13px,3.5vw,18px);animation:none}
+.vu-club-hero:has(>.vu-photo-greeting){padding-bottom:88px!important}
+.vu-club-hero>.vu-photo-greeting span{display:block;width:100%;box-sizing:border-box;padding:12px 8px;background:linear-gradient(100deg,#3b071eeb,#78152aeb,#3b071eeb);border:1px solid #f3cb8588;border-radius:12px;box-shadow:0 0 18px #ffba3838;text-shadow:0 2px 5px #000;letter-spacing:1px}
+.vu-fireworks-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
 .vu-club-hero>.vu-photo-overlay .vu-photo-particle{animation-name:vu-hero-fall}
 .vu-club-hero>.vu-photo-overlay[data-filter="newyear"] .vu-photo-particle{animation-name:vu-photo-firework}
 .vu-club-hero>.vu-photo-overlay[data-filter="summer"] .vu-photo-particle{animation-name:vu-photo-summer}
@@ -786,12 +789,35 @@ const vuFilterCss=`<style>
 function vuPhotoParticles(filter){
  const symbols={christmas:['❄','❅','❆'],newyear:['✦','✨','✧','✷','✹','🎆'],easter:['🌸','🦋','🌼'],mother:['💗','🌸','💕'],father:['💙','⭐','✨'],summer:['✦','✨','☀','✧','🌟'],halloween:['🦇','🎃','✦'],carnival:['🎊','✦','●'],birthday:['🎈','🎉','🎊']}[filter];
  if(!symbols)return '';
- const count=filter==='newyear'||filter==='summer'?36:30;
+ const count=filter==='newyear'?0:80; // 80 elementi per ogni ricorrenza; Capodanno usa Canvas
  const particles=Array.from({length:count},(_,i)=>{
   const x=(i*47+13)%96,y=8+(i*29)%78,sz=12+(i*7)%15,dur=filter==='newyear'?2.3+(i%6)*.4:filter==='summer'?3+(i%7)*.6:4+(i%8)*.7,delay=-(i*.83)%9,drift=(i%2?1:-1)*(15+(i*13)%80);
   return `<span class="vu-photo-particle" style="--x:${x}%;--y:${y}%;--sz:${sz}px;--dur:${dur}s;--delay:${delay}s;--drift:${drift}px">${symbols[i%symbols.length]}</span>`;
  }).join('');
- return `<div class="vu-photo-overlay" data-filter="${filter}" aria-hidden="true">${particles}</div><div class="vu-photo-greeting" aria-label="${esc(vuFilterMessages[filter])}"><span>${esc(vuFilterMessages[filter])}</span></div>`;
+ return `<div class="vu-photo-overlay" data-filter="${filter}" aria-hidden="true">${filter==='newyear'?'<canvas class="vu-fireworks-canvas" aria-hidden="true"></canvas>':''}${particles}</div><div class="vu-photo-greeting" aria-label="${esc(vuFilterMessages[filter])}"><span>${esc(vuFilterMessages[filter])}</span></div>`;
+}
+// Fuochi d'artificio Canvas: razzi, scie, esplosioni e gravita, confinati al profilo.
+const vuFireworksRunning=new WeakMap();
+function vuStartFireworks(canvas){
+ if(!canvas||vuFireworksRunning.has(canvas))return;
+ const ctx=canvas.getContext('2d',{alpha:true});if(!ctx)return;
+ let width=0,height=0,rockets=[],sparks=[],frame=0,last=0,launchAt=0,alive=true;
+ const palette=['#ffcc69','#ffe7ad','#fff9eb','#ff425d','#ff7c49','#f8c331','#ffffff'];
+ const random=(a,b)=>a+Math.random()*(b-a);
+ function resize(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(window.devicePixelRatio||1,2);width=r.width;height=r.height;canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
+ function launch(){if(width<10||height<10)return;const x=random(width*.15,width*.85),targetY=random(height*.12,height*.57);rockets.push({x,y:height+8,px:x,py:height+8,vx:random(-.65,.65),vy:random(-10.8,-8.2),targetY,hue:palette[Math.floor(random(0,palette.length))],trail:[]})}
+ function burst(r){if(sparks.length>650)sparks.splice(0,sparks.length-650);const n=80+Math.floor(Math.random()*31),power=random(2.2,4.9),base=palette[Math.floor(random(0,palette.length))];for(let i=0;i<n;i++){const a=Math.PI*2*i/n+random(-.13,.13),speed=power*random(.48,1.23),color=Math.random()<.68?base:palette[Math.floor(random(0,palette.length))];sparks.push({x:r.x,y:r.y,px:r.x,py:r.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,life:random(42,85),max:85,color,size:random(.8,2.1),drag:random(.969,.988)})}}
+ function draw(t){if(!alive)return;if(!canvas.isConnected){alive=false;vuFireworksRunning.delete(canvas);return}if(document.hidden){last=t;requestAnimationFrame(draw);return}if(!width||!height)resize();if(!width||!height){requestAnimationFrame(draw);return}const dt=Math.min(2.0,(t-last||16.7)/16.7);last=t;frame+=dt;ctx.clearRect(0,0,width,height);ctx.globalCompositeOperation='lighter';
+ if(t>=launchAt){launch();if(Math.random()<.33)launch();launchAt=t+random(430,900)}
+ for(let i=rockets.length-1;i>=0;i--){const r=rockets[i];r.px=r.x;r.py=r.y;r.x+=r.vx*dt;r.y+=r.vy*dt;r.vy+=.09*dt;r.trail.push({x:r.x,y:r.y});if(r.trail.length>14)r.trail.shift();for(let j=1;j<r.trail.length;j++){const a=r.trail[j-1],b=r.trail[j];ctx.strokeStyle=`rgba(255,207,122,${j/r.trail.length*.78})`;ctx.lineWidth=1.6*j/r.trail.length;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}ctx.fillStyle='#fff5d9';ctx.beginPath();ctx.arc(r.x,r.y,2.5,0,Math.PI*2);ctx.fill();if(r.y<=r.targetY||r.vy>=-1){burst(r);rockets.splice(i,1)}}
+ for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.px=s.x;s.py=s.y;s.x+=s.vx*dt;s.y+=s.vy*dt;s.vx*=Math.pow(s.drag,dt);s.vy=s.vy*Math.pow(s.drag,dt)+.058*dt;s.life-=dt;if(s.life<=0){sparks.splice(i,1);continue}const a=Math.min(1,s.life/24);ctx.globalAlpha=a;ctx.strokeStyle=s.color;ctx.lineWidth=s.size;ctx.beginPath();ctx.moveTo(s.px,s.py);ctx.lineTo(s.x,s.y);ctx.stroke();if(i%4===0){ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(s.x,s.y,s.size*.8,0,Math.PI*2);ctx.fill()}}
+ ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';requestAnimationFrame(draw)}
+ resize();vuFireworksRunning.set(canvas,true);requestAnimationFrame(draw);
+}
+function vuInitProfileFireworks(){document.querySelectorAll('.vu-club-hero .vu-fireworks-canvas').forEach(vuStartFireworks)}
+if(typeof document!=='undefined'){
+ const vuWatchFireworks=()=>{vuInitProfileFireworks();const observer=new MutationObserver(()=>vuInitProfileFireworks());observer.observe(document.body,{childList:true,subtree:true})};
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',vuWatchFireworks,{once:true});else vuWatchFireworks();
 }
 const vuProfilePhotoCss=`<style>
 .vu-player-photo{display:block;width:100%;max-width:420px;max-height:540px;object-fit:contain;object-position:center;margin:18px auto;border-radius:16px;background:#171219}
