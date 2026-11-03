@@ -846,6 +846,7 @@ const vuLuxuryProfileCss=`<style>
 .vu-club-brand img{width:45px;height:45px;object-fit:contain}
 .vu-club-stage{position:relative;flex:1;display:flex;align-items:flex-end;min-height:290px}
 .vu-club-number{position:absolute;right:-2px;top:13px;font-size:clamp(100px,31vw,165px);line-height:1;font-weight:950;letter-spacing:-12px;color:transparent;-webkit-text-stroke:2px #ffffff60;text-shadow:0 0 30px #ed264e44}
+.vu-club-number-wrap{position:absolute;right:0;top:13px;display:flex;flex-direction:column;align-items:center;max-width:47%;z-index:0}.vu-club-number-wrap .vu-club-number{position:static;font-size:clamp(100px,31vw,165px)}.vu-club-surname{font-size:clamp(13px,3.7vw,23px);font-weight:950;letter-spacing:1.3px;color:transparent;-webkit-text-stroke:1px #f7e5e9;text-align:center;overflow-wrap:anywhere;line-height:1.1;text-shadow:0 0 15px #eb2b5155}.vu-club-bio{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px;padding:15px 0 0;border-top:1px solid #ffffff42}.vu-club-bio-item{display:flex;flex-direction:column;gap:4px}.vu-club-bio-item span{font-size:9px;letter-spacing:1px;color:#d6b7c0;font-weight:750}.vu-club-bio-item strong{font-size:12px;font-weight:850;color:#fff;overflow-wrap:anywhere}
 .vu-club-person{position:relative;z-index:1;width:76%;max-height:340px;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 12px 18px #0009);margin:0}
 .vu-club-identity{position:relative;z-index:2;margin-top:-4px;text-shadow:0 3px 12px #000a}
 .vu-club-identity strong{display:block;font-size:clamp(31px,8vw,48px);line-height:.98;letter-spacing:-1.5px;font-weight:950;overflow-wrap:anywhere}
@@ -865,24 +866,34 @@ const vuLuxuryProfileCss=`<style>
 @media(min-width:720px){.vu-club-hero{min-height:480px}.vu-club-person{max-height:390px;width:54%}.vu-club-number{font-size:185px}.vu-club-section{padding:24px 27px}}
 @media(prefers-reduced-motion:no-preference){.vu-club{animation:vuClubAppear .45s ease-out both}@keyframes vuClubAppear{from{opacity:.5;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}}
 </style>`;
-function vuLuxuryHero(p,playedCount,goalsCount,attendancePct){
+function vuLuxuryHero(p,playedCount,goalsCount,attendancePct,trainingPresent=0){
  const category=upper(cats.find(c=>c.id===p.category_id)?.name||'');
  const role=upper(p.primary_role||'CALCIATORE');
  const isKeeper=p.primary_role==='Portiere';
  const src=photoOf(p.id);
  const qualification=detailOf(p.id).team_role;
+ const birth=p.birth_date?dateIt(p.birth_date):"NON INDICATA";
  const year=new Date().getMonth()>=8?new Date().getFullYear():new Date().getFullYear()-1;
  const completed=matches.filter(m=>m.status==='completed'&&m.match_date>=`${year}-09-01`&&m.match_date<=`${year+1}-08-31`);
  const goalCount=id=>completed.filter(m=>m.played_ids?.includes(id)).reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===id)?.goals||0),0);
  const teammates=players.filter(x=>x.category_id===p.category_id&&x.primary_role!=='Portiere');
  const top=!isKeeper&&goalsCount>0&&goalsCount===Math.max(0,...teammates.map(x=>goalCount(x.id)));
  const cleanSheets=completed.filter(m=>m.played_ids?.includes(p.id)&&!isTournament(m)&&Number(m.goals_against)===0).length;
+ const titles=[];
+ if(top)titles.push(['CAPOCANNONIERE '+category,'MAGGIOR NUMERO DI GOL NELLA CATEGORIA']);
+ if(isKeeper&&cleanSheets>=1)titles.push(['MURO ROSSONERO',`${cleanSheets} PARTITE A PORTA INVIOLATA REGISTRATE`]);
+ const roleTitles={'Difensore':'PILASTRO DELLA DIFESA','Centrocampista':'MOTORE DEL CENTROCAMPO','Attaccante':'BOMBER ROSSONERO','Jolly':'JOLLY ROSSONERO','Portiere':'PRESENZA TRA I PALI'};
+ if(playedCount>=10&&roleTitles[p.primary_role])titles.push([roleTitles[p.primary_role],`${playedCount} PARTITE GIOCATE · TRAGUARDO DI PARTECIPAZIONE`]);
+ if(trainingPresent>=10)titles.push(['COSTANZA ROSSONERA',`${trainingPresent} ALLENAMENTI FREQUENTATI`]);
+ if(qualification==='captain')titles.push(['CAPITANO','QUALIFICA UFFICIALE DELLA SQUADRA']);
+ if(qualification==='vice')titles.push(['VICECAPITANO','QUALIFICA UFFICIALE DELLA SQUADRA']);
+
  return `${vuLuxuryProfileCss}<article class="vu-club" aria-label="PROFILO UFFICIALE ${esc(fullName(p))}">
  <div class="vu-club-hero"><div class="vu-club-brand"><img src="logo.png" alt="VOLLA UNITED"><span>VOLLA UNITED<br>ACADEMY · PROFILO UFFICIALE</span></div>
- <div class="vu-club-stage"><div class="vu-club-number" aria-hidden="true">${esc(p.jersey_number??'')}</div>${src?`<img class="vu-club-person" src="${esc(src)}" alt="FOTO UFFICIALE ${esc(fullName(p))}" loading="lazy">`:`<div class="vu-player-photo-empty">FOTO UFFICIALE NON ANCORA CARICATA</div>`}</div>
- <div class="vu-club-identity"><strong>${esc(upper(p.first_name))}<br>${esc(upper(p.last_name))}</strong><div class="vu-club-line"></div><small>${esc(role)} · CATEGORIA ${esc(category)}</small>${p.jersey_number!=null&&p.jersey_number!==''?`<div class="vu-club-tag">N° ${esc(p.jersey_number)} · MAGLIA UFFICIALE</div>`:''}${qualification==='captain'?'<div class="vu-club-tag">CAPITANO</div>':qualification==='vice'?'<div class="vu-club-tag">VICECAPITANO</div>':''}</div></div>
+ <div class="vu-club-stage"><div class="vu-club-number-wrap" aria-hidden="true"><div class="vu-club-number">${esc(p.jersey_number??'')}</div><div class="vu-club-surname">${esc(upper(p.last_name))}</div></div>${src?`<img class="vu-club-person" src="${esc(src)}" alt="FOTO UFFICIALE ${esc(fullName(p))}" loading="lazy">`:`<div class="vu-player-photo-empty">FOTO UFFICIALE NON ANCORA CARICATA</div>`}</div>
+ <div class="vu-club-identity"><strong>${esc(upper(p.first_name))}<br>${esc(upper(p.last_name))}</strong><div class="vu-club-line"></div><small>${esc(role)} · CATEGORIA ${esc(category)}</small>${p.jersey_number!=null&&p.jersey_number!==''?`<div class="vu-club-tag">N° ${esc(p.jersey_number)} · MAGLIA UFFICIALE</div>`:''}${qualification==='captain'?'<div class="vu-club-tag">CAPITANO</div>':qualification==='vice'?'<div class="vu-club-tag">VICECAPITANO</div>':''}</div><div class="vu-club-bio"><div class="vu-club-bio-item"><span>NOME</span><strong>${esc(upper(p.first_name))}</strong></div><div class="vu-club-bio-item"><span>COGNOME</span><strong>${esc(upper(p.last_name))}</strong></div><div class="vu-club-bio-item"><span>DATA DI NASCITA</span><strong>${esc(birth)}</strong></div><div class="vu-club-bio-item"><span>RUOLO</span><strong>${esc(role)}</strong></div><div class="vu-club-bio-item"><span>CATEGORIA</span><strong>${esc(category)}</strong></div><div class="vu-club-bio-item"><span>NUMERO MAGLIA</span><strong>${esc(p.jersey_number??"—")}</strong></div></div></div>
  <section class="vu-club-section"><div class="vu-club-title"><span>▥</span> LA MIA STAGIONE</div><div class="vu-club-stats"><div class="vu-club-stat"><strong>${playedCount}</strong><small>PARTITE</small></div><div class="vu-club-stat"><strong>${isKeeper?cleanSheets:goalsCount}</strong><small>${isKeeper?'CLEAN SHEET':'GOL'}</small></div><div class="vu-club-stat"><strong>${attendancePct}%</strong><small>ALLENAMENTI</small></div></div></section>
- ${top?`<section class="vu-club-section"><div class="vu-club-title"><span>🏆</span> I MIEI TRAGUARDI</div><div class="vu-club-award">🥇 CAPOCANNONIERE ${esc(category)}</div><div class="vu-club-sub">RICONOSCIMENTO BASATO SUI GOL REGISTRATI</div></section>`:''}
+ <section class="vu-club-section"><div class="vu-club-title"><span>🏆</span> I MIEI RICONOSCIMENTI</div>${titles.length?titles.map(([name,reason])=>`<div class="vu-club-award" style="margin-top:9px">✦ ${esc(name)}<div class="vu-club-sub">${esc(reason)}</div></div>`).join(''):'<p class="vu-club-sub">I PRIMI RICONOSCIMENTI ARRIVERANNO CON I TRAGUARDI DELLA STAGIONE.</p>'}</section>
  </article>`;
 }
 function playerFamilyContent(p,staffView=false){
@@ -894,7 +905,7 @@ function playerFamilyContent(p,staffView=false){
  const trainings=sessions.filter(s=>s.category_id===p.category_id).sort((a,b)=>b.training_date.localeCompare(a.training_date));
  const records=trainings.map(s=>({s,a:attendance.find(a=>a.session_id===s.id&&a.player_id===p.id)})).filter(x=>x.a);
  const present=records.filter(x=>x.a.present).length;
- return `${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small></div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
+ return `${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0,present)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small></div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
 }
 function bindFamily(){ $('#child-select')?.addEventListener('change',e=>{activeChild=e.target.value;render()}) }
 function parentChildPicker(prefix, selectedIds=[]){
