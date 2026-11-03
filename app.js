@@ -236,8 +236,82 @@ function login(force=false){app.innerHTML=`<main class="login"><div class="login
 $('#loginform').onsubmit=async e=>{e.preventDefault();$('#autherror').textContent='';try{if(!sb)throw Error('Collega Supabase per attivare il login');if(force){if(val('newpass').length<8)throw Error('Password: almeno 8 caratteri');if(val('newpass')!==val('confirm'))throw Error('Le password non coincidono');await adminCall({action:'change-password',password:val('newpass')});page='home';editing=null;draft=null;selected=[];await load();}else{const uname=val('username').toLowerCase();const email=uname.includes('@')?uname:uname+'@users.volla.invalid';const {error}=await sb.auth.signInWithPassword({email,password:val('password')});if(error)throw Error('Credenziali non valide');try{if($('#remember-login')?.checked)localStorage.setItem(rememberedUserKey,uname);else localStorage.removeItem(rememberedUserKey)}catch{}page='home';editing=null;draft=null;selected=[];await load();}}catch(err){$('#autherror').textContent=err.message}}}
 async function query(table,cols='*'){const {data,error}=await sb.from(table).select(cols);if(error)throw error;return data||[]}
 async function load(){try{const {data:{user}}=await sb.auth.getUser();if(!user){me=null;login();return}const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error)throw error;me=data;if(!me.active){await sb.auth.signOut();me=null;login();toast('Account disattivato: contatta l’amministratore');return}if(me.must_change_password){page='home';login(true);return}cats=await query('categories');access=me.role==='parent'?[]:await query('coach_categories');players=await query('players');matches=await query('matches');matchScorers=await query('match_scorers');if(me.role!=='parent')await loadOpponents();const mp=await query('match_players');matches.forEach(m=>{const rows=mp.filter(x=>x.match_id===m.id).sort((a,b)=>a.sort_order-b.sort_order);m.player_ids=rows.map(x=>x.player_id);m.played_ids=rows.filter(x=>x.played).map(x=>x.player_id)});users=me.role==='admin'?await query('profiles'):[];if(me.role!=='parent')await loadPlayerDetails();else playerDetails=[];await loadAttendance();await loadFamilyData();if(me.role==='parent')await loadParentMatchDetails();await vuLoadNotifications();await vuLoadFilters();await vuCheckPush();if(!permitted().includes(currentCat))currentCat=permitted()[0]||'';if(me.role==='parent'){if(page!=='notifications')page='family';if(!players.some(p=>p.id===activeChild))activeChild=players[0]?.id||''}render();await vuOpenRequestedMatch()}catch(e){toast(e.message);console.error(e)}}
-function render(){document.getElementById('opponent-suggestions')?.remove();app.innerHTML=`<main class="shell">${vuStyles}${nav()}<div id="content"></div><footer class="foot">#weL⚽ve VOLLAUNITED 🔥</footer></main>`;let c=$('#content');if(me?.role==='parent'){if(page!=='notifications')page='family';c.innerHTML=page==='notifications'?vuNotificationsPage():familyPage();}else if(page==='home')c.innerHTML=home();if(page==='notifications'&&me?.role!=='parent')c.innerHTML=vuNotificationsPage();if(page==='players')c.innerHTML=roster();if(page==='matches')c.innerHTML=matchEditor();if(page==='history')c.innerHTML=history();if(page==='callhistory')c.innerHTML=callHistory();if(page==='attendance')c.innerHTML=attendancePage();if(page==='admin')c.innerHTML=admin();if(page==='profile')c.innerHTML=profilePage();bind()}
-const home=()=>`<section class="hero"><div><div class="sub">BENVENUTO NEL CLUB</div><h2>Ciao, ${esc(me.full_name)}! 🔥</h2><p>${me.role==='admin'?'Gestisci tutte le categorie, convocazioni e funzioni della società.':'La tua squadra, le tue convocazioni.'}</p></div></section><div class="grid">${[['players','👥','Calciatori','Gestisci la rosa'],['matches','📋','Convocazioni','Prepara la partita'],['callhistory','🗂','Storico convocazioni','Convocazioni salvate'],['history','🏆','Storico partite','Risultati e marcatori'],['attendance','✅','Presenze','Allenamenti e statistiche'],['profile','🪪','Profilo calciatore','Visualizza la scheda come un genitore'],[me.role==='admin'?'admin':'players','🛡️',me.role==='admin'?'Amministrazione':'Categorie','Gestione società']].map(([p,i,t,s])=>`<button class="tile" data-page="${p}"><span class="emoji">${i}</span><b>${t}</b><span>${s}</span></button>`).join('')}</div><section class="panel"><h3>Le tue categorie</h3>${cats.filter(c=>permitted().includes(c.id)).map(c=>`<div class="item"><strong>${esc(c.name)}</strong><small>${allowed(c.id,'convocate')?'✓ Puoi convocare':'Solo visualizzazione'} · ${players.filter(p=>p.category_id===c.id).length} calciatori</small></div>`).join('')||'<p class="empty">Nessuna categoria assegnata</p>'}</section>`;
+function render(){document.getElementById('opponent-suggestions')?.remove();app.innerHTML=`<main class="shell">${vuStyles}${page==='home'?vuDashStyles:''}${nav()}<div id="content"></div><footer class="foot">#weL⚽ve VOLLAUNITED 🔥</footer></main>`;let c=$('#content');if(me?.role==='parent'){if(page!=='notifications')page='family';c.innerHTML=page==='notifications'?vuNotificationsPage():familyPage();}else if(page==='home')c.innerHTML=home();if(page==='notifications'&&me?.role!=='parent')c.innerHTML=vuNotificationsPage();if(page==='players')c.innerHTML=roster();if(page==='matches')c.innerHTML=matchEditor();if(page==='history')c.innerHTML=history();if(page==='callhistory')c.innerHTML=callHistory();if(page==='attendance')c.innerHTML=attendancePage();if(page==='admin')c.innerHTML=admin();if(page==='profile')c.innerHTML=profilePage();bind()}
+const vuDashDate=d=>d?new Date(d+'T12:00:00'):null;
+const vuDashToday=()=>new Date().toLocaleDateString('en-CA');
+const vuDashScore=m=>isFigc(m)&&Array.isArray(m.figc_periods)&&m.figc_periods.length?figcScore(m.figc_periods):[Number(m.goals_for),Number(m.goals_against)];
+function vuDashHome(){
+ const admin=me.role==='admin',ids=permitted(),today=vuDashToday();
+ const scope=matches.filter(m=>ids.includes(m.category_id));
+ const completed=scope.filter(m=>m.status==='completed').sort((a,b)=>String(b.match_date).localeCompare(String(a.match_date)));
+ const upcoming=scope.filter(m=>m.status!=='completed'&&m.match_date>=today).sort((a,b)=>String(a.match_date).localeCompare(String(b.match_date))||String(a.kick_off_time||'').localeCompare(String(b.kick_off_time||'')));
+ const normal=completed.filter(m=>!isTournament(m)&&Number.isFinite(vuDashScore(m)[0])&&Number.isFinite(vuDashScore(m)[1]));
+ const wins=normal.filter(m=>vuDashScore(m)[0]>vuDashScore(m)[1]).length;
+ const draws=normal.filter(m=>vuDashScore(m)[0]===vuDashScore(m)[1]).length;
+ const losses=normal.filter(m=>vuDashScore(m)[0]<vuDashScore(m)[1]).length;
+ const registered=players.filter(p=>ids.includes(p.category_id)&&p.active!==false).length;
+ const thisWeekStart=new Date();thisWeekStart.setHours(0,0,0,0);thisWeekStart.setDate(thisWeekStart.getDate()-((thisWeekStart.getDay()+6)%7));
+ const weekKey=thisWeekStart.toLocaleDateString('en-CA');
+ const weekSessions=sessions.filter(x=>ids.includes(x.category_id)&&x.training_date>=weekKey&&x.training_date<=today);
+ const sessionIds=new Set(weekSessions.map(x=>x.id));
+ const weekAttendance=attendance.filter(x=>sessionIds.has(x.session_id));
+ const weekPct=weekAttendance.length?Math.round(100*weekAttendance.filter(x=>x.present).length/weekAttendance.length):null;
+ const weekMatches=completed.filter(m=>m.match_date>=weekKey&&m.match_date<=today);
+ const quick=[['matches','📋','NUOVA CONVOCAZIONE'],['callhistory','🗂️','CONVOCAZIONI'],['attendance','✅','PRESENZE'],['history','🏆','RISULTATI'],['players','👥','CALCIATORI'],['profile','🪪','PROFILI'],...(admin?[['admin','⚙️','AMMINISTRAZIONE']]:[])];
+ const next=upcoming[0];
+ const catName=id=>upper(cats.find(c=>c.id===id)?.name||'CATEGORIA');
+ return `<div class="vu-dash">
+ <section class="vu-dash-hero"><div class="vu-dash-eyebrow">VOLLA UNITED ACADEMY · ${admin?'ACADEMY CONTROL CENTER':'COACH CENTER'}</div><div class="vu-dash-hero-row"><img src="logo.png" alt="Volla United"><div><div class="vu-dash-welcome">BENVENUTO, ${admin?'ADMIN':'MISTER'}</div><h1>${esc(upper(me.full_name||''))}</h1><div class="vu-dash-caption">${admin?'PANORAMICA GENERALE DELLA SOCIETÀ':'LA TUA SQUADRA. IL TUO CENTRO OPERATIVO.'}</div></div></div></section>
+ <div class="vu-dash-heading"><h2>📊 ${admin?'ACADEMY IN NUMERI':'LA TUA SQUADRA'}</h2><span>DATI REALI</span></div>
+ <div class="vu-dash-stats">
+ ${[[registered,'CALCIATORI','👥'],[completed.length,'PARTITE CONCLUSE','🏟️'],[wins,'VITTORIE','🏆'],[weekPct===null?'—':weekPct+'%','PRESENZE SETTIMANA','📈']].map(([n,t,i])=>`<div class="vu-dash-stat"><span>${i} ${t}</span><strong>${n}</strong></div>`).join('')}
+ </div>
+ <div class="vu-dash-heading"><h2>⚽ PROSSIMO IMPEGNO</h2><span>${upcoming.length} IN PROGRAMMA</span></div>
+ ${next?`<section class="vu-dash-feature"><div class="vu-dash-tag">${esc(catName(next.category_id))} · ${esc(upper(next.match_type||'PARTITA'))}</div><div class="vu-dash-opponent">${esc(upper(isTournament(next)?next.tournament_name||'TORNEO':next.opponent||'AVVERSARIO DA DEFINIRE'))}</div><div class="vu-dash-meta">📅 ${esc(dateIt(next.match_date))} · ⏰ ${esc((next.kick_off_time||'').slice(0,5)||'DA DEFINIRE')}</div><div class="vu-dash-meta">🏟️ ${esc(upper(next.field_name||'CAMPO DA DEFINIRE'))}</div><button class="vu-dash-link" data-page="callhistory">APRI CONVOCAZIONI →</button></section>`:`<section class="vu-dash-feature"><div class="vu-dash-opponent">NESSUNA PARTITA IN PROGRAMMA</div><div class="vu-dash-meta">LE PROSSIME CONVOCAZIONI APPARIRANNO QUI.</div><button class="vu-dash-link" data-page="matches">CREA CONVOCAZIONE →</button></section>`}
+ <div class="vu-dash-heading"><h2>⚡ ACCESSO RAPIDO</h2></div><div class="vu-dash-actions">${quick.map(([p,i,t])=>`<button data-page="${p}"><span>${i}</span><b>${t}</b></button>`).join('')}</div>
+ <div class="vu-dash-heading"><h2>📅 RIEPILOGO SETTIMANALE</h2></div>
+ <section class="vu-dash-panel"><div class="vu-dash-trio"><div><strong>${weekMatches.length}</strong><span>PARTITE</span></div><div><strong>${weekMatches.filter(m=>!isTournament(m)&&vuDashScore(m)[0]>vuDashScore(m)[1]).length}</strong><span>VITTORIE</span></div><div><strong>${weekSessions.length}</strong><span>ALLENAMENTI</span></div></div><div class="vu-dash-footnote">${weekPct===null?'NESSUNA PRESENZA REGISTRATA QUESTA SETTIMANA':'PRESENZA MEDIA REGISTRATA: '+weekPct+'%'}</div></section>
+ <div class="vu-dash-heading"><h2>🏟️ ULTIMI RISULTATI</h2></div><section class="vu-dash-panel">${completed.slice(0,4).map(m=>`<div class="vu-dash-result"><div><strong>${esc(upper(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA'))}</strong><small>${esc(catName(m.category_id))} · ${esc(dateIt(m.match_date))}</small></div><b>${esc(isTournament(m)?vuTournamentPlace(m)||'TORNEO':vuDashScore(m).join(' – '))}</b></div>`).join('')||'<div class="vu-dash-empty">NESSUN RISULTATO ANCORA REGISTRATO</div>'}<button class="vu-dash-link" data-page="history">VEDI STORICO COMPLETO →</button></section>
+ <div class="vu-dash-heading"><h2>🛡️ ${admin?'TUTTE LE CATEGORIE':'LE TUE CATEGORIE'}</h2></div><section class="vu-dash-panel">${cats.filter(c=>ids.includes(c.id)).map(c=>`<div class="vu-dash-category"><div><strong>${esc(upper(c.name))}</strong><small>${players.filter(p=>p.category_id===c.id&&p.active!==false).length} CALCIATORI · ${allowed(c.id,'convocate')?'PUOI CONVOCARE':'SOLO VISUALIZZAZIONE'}</small></div><span>⚽</span></div>`).join('')||'<div class="vu-dash-empty">NESSUNA CATEGORIA ASSEGNATA</div>'}</section>
+ <div class="vu-dash-footnote">RISULTATI FIGC CALCOLATI PER TEMPI · I TORNEI CON PIAZZAMENTO NON SONO CONTEGGIATI COME VITTORIE O SCONFITTE.</div>
+ </div>`;
+}
+const vuDashStyles=`<style id="vu-dashboard-style">
+.vu-dash{display:grid;gap:13px;padding:8px 0 25px;color:#fff}
+.vu-dash-hero{border:1px solid #9e4656;border-radius:20px;padding:22px 17px;background:linear-gradient(130deg,#4e1125,#1b1019 66%,#351322);box-shadow:0 12px 30px #0004}
+.vu-dash-eyebrow{font-size:10px;letter-spacing:1.6px;color:#f5b8c4;font-weight:800}
+.vu-dash-hero-row{display:flex;align-items:center;gap:14px;margin-top:16px}
+.vu-dash-hero img{width:76px;height:76px;object-fit:contain;flex:none}
+.vu-dash-welcome{font-size:11px;letter-spacing:1px;color:#f1b8c3;font-weight:800}
+.vu-dash-hero h1{font-size:clamp(19px,5vw,29px);margin:6px 0;line-height:1.12;overflow-wrap:anywhere}
+.vu-dash-caption{font-size:10px;letter-spacing:.6px;color:#d7bac3;line-height:1.5}
+.vu-dash-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+.vu-dash-heading h2{font-size:14px;letter-spacing:.5px;margin:0}
+.vu-dash-heading>span{font-size:10px;color:#e9a5b5;font-weight:800;white-space:nowrap}
+.vu-dash-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.vu-dash-stat,.vu-dash-panel{background:linear-gradient(155deg,#291820,#1b141b);border:1px solid #613142;border-radius:16px;padding:15px}
+.vu-dash-stat span{font-size:10px;display:block;line-height:1.5;color:#e6b5c2;font-weight:800;letter-spacing:.3px}
+.vu-dash-stat strong{font-size:34px;line-height:1.3;display:block;margin-top:8px;font-variant-numeric:tabular-nums}
+.vu-dash-feature{border:1px solid #bb5269;border-radius:17px;padding:18px;background:linear-gradient(120deg,#5b1730,#25151f)}
+.vu-dash-tag{font-size:10px;color:#f6c5cf;font-weight:800;letter-spacing:1px}
+.vu-dash-opponent{font-size:22px;font-weight:900;margin:13px 0;line-height:1.15;overflow-wrap:anywhere}
+.vu-dash-meta{font-size:12px;margin:8px 0;color:#f4dbe2}
+.vu-dash-link{margin-top:12px;padding:11px 12px;background:#a82b4b;color:#fff;border:1px solid #d65c7b;border-radius:10px;font-size:11px;font-weight:900;letter-spacing:.4px;cursor:pointer}
+.vu-dash-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.vu-dash-actions button{display:flex;align-items:center;gap:9px;text-align:left;padding:14px 10px;background:#291820;border:1px solid #633345;color:#fff;border-radius:12px;cursor:pointer;min-height:65px}
+.vu-dash-actions span{font-size:23px}.vu-dash-actions b{font-size:10px;line-height:1.3;overflow-wrap:anywhere}
+.vu-dash-trio{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));text-align:center;gap:5px}
+.vu-dash-trio>div{display:grid;gap:5px}.vu-dash-trio strong{font-size:26px}.vu-dash-trio span{font-size:9px;color:#e3b7c2;font-weight:800}
+.vu-dash-footnote{font-size:10px;color:#caa4b0;line-height:1.5;margin-top:10px}
+.vu-dash-result,.vu-dash-category{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #55303e}
+.vu-dash-result:last-of-type,.vu-dash-category:last-child{border-bottom:0}
+.vu-dash-result strong,.vu-dash-category strong{display:block;font-size:12px;overflow-wrap:anywhere}
+.vu-dash-result small,.vu-dash-category small{display:block;font-size:10px;color:#cda6b3;margin-top:5px}
+.vu-dash-result>b{font-size:17px;white-space:nowrap}
+.vu-dash-empty{font-size:12px;color:#d7b0bc;padding:10px 0}
+@media(max-width:360px){.vu-dash-hero img{width:55px;height:55px}.vu-dash-actions b{font-size:9px}}
+</style>`;
+const home=()=>vuDashHome();
 const catSelector=(ids=permitted())=>`<div class="field"><label>Categoria</label><select id="category">${categoryOptions(ids)}</select></div>`;
 const detailOf=id=>playerDetails.find(d=>d.player_id===id)||{};
 async function loadPlayerDetails(){const r=await sb.from('player_details').select('*');if(r.error){console.warn('Dettagli giocatori:',r.error);playerDetails=[];toast('Configura la tabella player_details su Supabase');return}playerDetails=r.data||[]}
