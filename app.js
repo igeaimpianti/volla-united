@@ -865,6 +865,22 @@ const vuLuxuryProfileCss=`<style>
 .vu-club-tag{display:inline-block;margin-top:12px;background:#2a1821;border:1px solid #ffffff4a;border-radius:30px;padding:7px 11px;font-size:10px;font-weight:800;letter-spacing:.6px}
 @media(min-width:720px){.vu-club-hero{min-height:480px}.vu-club-person{max-height:390px;width:54%}.vu-club-number{font-size:135px}.vu-club-section{padding:24px 27px}}
 @media(prefers-reduced-motion:no-preference){.vu-club{animation:vuClubAppear .45s ease-out both}@keyframes vuClubAppear{from{opacity:.5;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}}
+
+/* PROFILO V3: impaginazione stabile su iPhone, senza spazi vuoti */
+.vu-club-hero{min-height:0!important;display:block!important;padding:18px 14px 22px!important}
+.vu-club-brand{margin-bottom:14px}
+.vu-club-stage{display:grid!important;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr)!important;align-items:start!important;gap:12px!important;min-height:0!important;flex:none!important}
+.vu-club-person{grid-column:1;grid-row:1;position:relative!important;width:100%!important;max-height:none!important;height:auto!important;object-fit:contain!important;object-position:top center!important;align-self:start!important;display:block!important;margin:0!important;border-radius:5px}
+.vu-club-number-wrap{grid-column:2;grid-row:1;position:relative!important;right:auto!important;top:auto!important;transform:none!important;width:100%!important;max-width:none!important;z-index:2;display:flex!important;flex-direction:column!important;justify-content:flex-start!important;align-items:center!important;gap:0!important;min-width:0}
+.vu-club-number-wrap .vu-club-number{position:static!important;display:block!important;width:100%;font-family:Arial,Helvetica,sans-serif!important;font-size:clamp(56px,17vw,110px)!important;font-weight:900!important;font-style:normal!important;letter-spacing:-3px!important;line-height:1!important;text-align:center!important;color:#fff!important;-webkit-text-stroke:0!important;text-shadow:0 3px 14px #0006!important}
+.vu-club-surname{font-family:Arial,Helvetica,sans-serif!important;font-size:clamp(12px,3.4vw,20px)!important;letter-spacing:.6px!important;line-height:1.2!important;color:#fff!important;-webkit-text-stroke:0!important;text-shadow:none!important;font-weight:850!important;margin:4px 0 10px!important;overflow-wrap:anywhere}
+.vu-club-bio{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:9px!important;margin:0!important;padding:12px 0 0!important;border-top:1px solid #ffffff55!important;text-align:center!important}
+.vu-club-bio-item{display:flex!important;flex-direction:column!important;gap:2px!important;min-width:0}
+.vu-club-bio-item span{font-size:clamp(8px,2vw,10px)!important;letter-spacing:.35px!important;line-height:1.3!important}
+.vu-club-bio-item strong{font-size:clamp(10px,2.6vw,13px)!important;line-height:1.3!important;overflow-wrap:anywhere}
+.vu-club-identity{margin-top:14px!important}
+.vu-club-identity strong{font-size:clamp(29px,7.5vw,44px)!important}
+@media(min-width:720px){.vu-club-stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:25px!important}.vu-club-person{max-height:500px!important}.vu-club-number-wrap .vu-club-number{font-size:130px!important}.vu-club-bio{gap:13px!important}}
 </style>`;
 function vuLuxuryHero(p,playedCount,goalsCount,attendancePct,trainingPresent=0){
  const category=upper(cats.find(c=>c.id===p.category_id)?.name||'');
