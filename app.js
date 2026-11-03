@@ -245,7 +245,8 @@ function vuDashHome(){
  const scope=matches.filter(m=>ids.includes(m.category_id));
  const completed=scope.filter(m=>m.status==='completed').sort((a,b)=>String(b.match_date).localeCompare(String(a.match_date)));
  const upcoming=scope.filter(m=>m.status!=='completed'&&m.match_date>=today).sort((a,b)=>String(a.match_date).localeCompare(String(b.match_date))||String(a.kick_off_time||'').localeCompare(String(b.kick_off_time||'')));
- const normal=completed.filter(m=>!isTournament(m)&&Number.isFinite(vuDashScore(m)[0])&&Number.isFinite(vuDashScore(m)[1]));
+ const tournaments=completed.filter(isTournament);
+ const normal=completed.filter(m=>!isTournament(m)&&m.goals_for!=null&&m.goals_against!=null&&Number.isFinite(vuDashScore(m)[0])&&Number.isFinite(vuDashScore(m)[1]));
  const wins=normal.filter(m=>vuDashScore(m)[0]>vuDashScore(m)[1]).length;
  const draws=normal.filter(m=>vuDashScore(m)[0]===vuDashScore(m)[1]).length;
  const losses=normal.filter(m=>vuDashScore(m)[0]<vuDashScore(m)[1]).length;
@@ -256,7 +257,7 @@ function vuDashHome(){
  const sessionIds=new Set(weekSessions.map(x=>x.id));
  const weekAttendance=attendance.filter(x=>sessionIds.has(x.session_id));
  const weekPct=weekAttendance.length?Math.round(100*weekAttendance.filter(x=>x.present).length/weekAttendance.length):null;
- const weekMatches=completed.filter(m=>m.match_date>=weekKey&&m.match_date<=today);
+ const weekMatches=normal.filter(m=>m.match_date>=weekKey&&m.match_date<=today);
  const quick=[['matches','📋','NUOVA CONVOCAZIONE'],['callhistory','🗂️','CONVOCAZIONI'],['attendance','✅','PRESENZE'],['history','🏆','RISULTATI'],['players','👥','CALCIATORI'],['profile','🪪','PROFILI'],...(admin?[['admin','⚙️','AMMINISTRAZIONE']]:[])];
  const next=upcoming[0];
  const catName=id=>upper(cats.find(c=>c.id===id)?.name||'CATEGORIA');
@@ -264,16 +265,19 @@ function vuDashHome(){
  <section class="vu-dash-hero"><div class="vu-dash-eyebrow">VOLLA UNITED ACADEMY · ${admin?'ACADEMY CONTROL CENTER':'COACH CENTER'}</div><div class="vu-dash-hero-row"><img src="logo.png" alt="Volla United"><div><div class="vu-dash-welcome">BENVENUTO, ${admin?'ADMIN':'MISTER'}</div><h1>${esc(upper(me.full_name||''))}</h1><div class="vu-dash-caption">${admin?'PANORAMICA GENERALE DELLA SOCIETÀ':'LA TUA SQUADRA. IL TUO CENTRO OPERATIVO.'}</div></div></div></section>
  <div class="vu-dash-heading"><h2>📊 ${admin?'ACADEMY IN NUMERI':'LA TUA SQUADRA'}</h2><span>DATI REALI</span></div>
  <div class="vu-dash-stats">
- ${[[registered,'CALCIATORI','👥'],[completed.length,'PARTITE CONCLUSE','🏟️'],[wins,'VITTORIE','🏆'],[weekPct===null?'—':weekPct+'%','PRESENZE SETTIMANA','📈']].map(([n,t,i])=>`<div class="vu-dash-stat"><span>${i} ${t}</span><strong>${n}</strong></div>`).join('')}
+ ${[[registered,'CALCIATORI','👥'],[normal.length,'PARTITE DISPUTATE','🏟️'],[wins,'VITTORIE','🏆'],[weekPct===null?'—':weekPct+'%','PRESENZE SETTIMANA','📈']].map(([n,t,i])=>`<div class="vu-dash-stat"><span>${i} ${t}</span><strong>${n}</strong></div>`).join('')}
  </div>
+ <div class="vu-dash-heading"><h2>🏆 TORNEI</h2><span>SEZIONE SEPARATA</span></div>
+ <div class="vu-dash-stats">${[[tournaments.length,'TORNEI DISPUTATI','🏆'],[tournaments.filter(m=>Number(m.tournament_position)===1).length,'PRIMI POSTI','🥇']].map(([n,t,i])=>`<div class="vu-dash-stat"><span>${i} ${t}</span><strong>${n}</strong></div>`).join('')}</div>
  <div class="vu-dash-heading"><h2>⚽ PROSSIMO IMPEGNO</h2><span>${upcoming.length} IN PROGRAMMA</span></div>
  ${next?`<section class="vu-dash-feature"><div class="vu-dash-tag">${esc(catName(next.category_id))} · ${esc(upper(next.match_type||'PARTITA'))}</div><div class="vu-dash-opponent">${esc(upper(isTournament(next)?next.tournament_name||'TORNEO':next.opponent||'AVVERSARIO DA DEFINIRE'))}</div><div class="vu-dash-meta">📅 ${esc(dateIt(next.match_date))} · ⏰ ${esc((next.kick_off_time||'').slice(0,5)||'DA DEFINIRE')}</div><div class="vu-dash-meta">🏟️ ${esc(upper(next.field_name||'CAMPO DA DEFINIRE'))}</div><button class="vu-dash-link" data-page="callhistory">APRI CONVOCAZIONI →</button></section>`:`<section class="vu-dash-feature"><div class="vu-dash-opponent">NESSUNA PARTITA IN PROGRAMMA</div><div class="vu-dash-meta">LE PROSSIME CONVOCAZIONI APPARIRANNO QUI.</div><button class="vu-dash-link" data-page="matches">CREA CONVOCAZIONE →</button></section>`}
  <div class="vu-dash-heading"><h2>⚡ ACCESSO RAPIDO</h2></div><div class="vu-dash-actions">${quick.map(([p,i,t])=>`<button data-page="${p}"><span>${i}</span><b>${t}</b></button>`).join('')}</div>
  <div class="vu-dash-heading"><h2>📅 RIEPILOGO SETTIMANALE</h2></div>
  <section class="vu-dash-panel"><div class="vu-dash-trio"><div><strong>${weekMatches.length}</strong><span>PARTITE</span></div><div><strong>${weekMatches.filter(m=>!isTournament(m)&&vuDashScore(m)[0]>vuDashScore(m)[1]).length}</strong><span>VITTORIE</span></div><div><strong>${weekSessions.length}</strong><span>ALLENAMENTI</span></div></div><div class="vu-dash-footnote">${weekPct===null?'NESSUNA PRESENZA REGISTRATA QUESTA SETTIMANA':'PRESENZA MEDIA REGISTRATA: '+weekPct+'%'}</div></section>
- <div class="vu-dash-heading"><h2>🏟️ ULTIMI RISULTATI</h2></div><section class="vu-dash-panel">${completed.slice(0,4).map(m=>`<div class="vu-dash-result"><div><strong>${esc(upper(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA'))}</strong><small>${esc(catName(m.category_id))} · ${esc(dateIt(m.match_date))}</small></div><b>${esc(isTournament(m)?vuTournamentPlace(m)||'TORNEO':vuDashScore(m).join(' – '))}</b></div>`).join('')||'<div class="vu-dash-empty">NESSUN RISULTATO ANCORA REGISTRATO</div>'}<button class="vu-dash-link" data-page="history">VEDI STORICO COMPLETO →</button></section>
+ <div class="vu-dash-heading"><h2>🏟️ ULTIMI RISULTATI</h2></div><section class="vu-dash-panel">${normal.slice(0,4).map(m=>`<div class="vu-dash-result"><div><strong>${esc(upper(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA'))}</strong><small>${esc(catName(m.category_id))} · ${esc(dateIt(m.match_date))}</small></div><b>${esc(isTournament(m)?vuTournamentPlace(m)||'TORNEO':vuDashScore(m).join(' – '))}</b></div>`).join('')||'<div class="vu-dash-empty">NESSUN RISULTATO ANCORA REGISTRATO</div>'}<button class="vu-dash-link" data-page="history">VEDI STORICO COMPLETO →</button></section>
+ <div class="vu-dash-heading"><h2>🏆 ULTIMI PIAZZAMENTI TORNEI</h2></div><section class="vu-dash-panel">${tournaments.slice(0,5).map(m=>`<div class="vu-dash-result"><div><strong>${esc(upper(m.tournament_name||'TORNEO'))}</strong><small>${esc(catName(m.category_id))} · ${esc(dateIt(m.match_date))}</small></div><b>${esc(m.tournament_position?`${m.tournament_position}° POSTO${m.tournament_band?` · ${upper(m.tournament_band)}`:''}`:'PIAZZAMENTO NON DISPONIBILE')}</b></div>`).join('')||'<div class="vu-dash-empty">NESSUN TORNEO CONCLUSO</div>'}<button class="vu-dash-link" data-page="history">VEDI STORICO TORNEI →</button></section>
  <div class="vu-dash-heading"><h2>🛡️ ${admin?'TUTTE LE CATEGORIE':'LE TUE CATEGORIE'}</h2></div><section class="vu-dash-panel">${cats.filter(c=>ids.includes(c.id)).map(c=>`<div class="vu-dash-category"><div><strong>${esc(upper(c.name))}</strong><small>${players.filter(p=>p.category_id===c.id&&p.active!==false).length} CALCIATORI · ${allowed(c.id,'convocate')?'PUOI CONVOCARE':'SOLO VISUALIZZAZIONE'}</small></div><span>⚽</span></div>`).join('')||'<div class="vu-dash-empty">NESSUNA CATEGORIA ASSEGNATA</div>'}</section>
- <div class="vu-dash-footnote">RISULTATI FIGC CALCOLATI PER TEMPI · I TORNEI CON PIAZZAMENTO NON SONO CONTEGGIATI COME VITTORIE O SCONFITTE.</div>
+ <div class="vu-dash-footnote">RISULTATI FIGC CALCOLATI PER TEMPI · TORNEI E PIAZZAMENTI SEPARATI DALLE STATISTICHE PARTITE.</div>
  </div>`;
 }
 const vuDashStyles=`<style id="vu-dashboard-style">
@@ -307,7 +311,7 @@ const vuDashStyles=`<style id="vu-dashboard-style">
 .vu-dash-result:last-of-type,.vu-dash-category:last-child{border-bottom:0}
 .vu-dash-result strong,.vu-dash-category strong{display:block;font-size:12px;overflow-wrap:anywhere}
 .vu-dash-result small,.vu-dash-category small{display:block;font-size:10px;color:#cda6b3;margin-top:5px}
-.vu-dash-result>b{font-size:17px;white-space:nowrap}
+.vu-dash-result>b{font-size:14px;text-align:right;max-width:48%;overflow-wrap:anywhere}
 .vu-dash-empty{font-size:12px;color:#d7b0bc;padding:10px 0}
 @media(max-width:360px){.vu-dash-hero img{width:55px;height:55px}.vu-dash-actions b{font-size:9px}}
 </style>`;
