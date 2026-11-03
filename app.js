@@ -895,11 +895,11 @@ function vuLuxuryHero(p,playedCount,goalsCount,attendancePct,trainingPresent=0){
  const teammates=players.filter(x=>x.category_id===p.category_id&&x.primary_role!=='Portiere');
  const top=!isKeeper&&goalsCount>0&&goalsCount===Math.max(0,...teammates.map(x=>goalCount(x.id)));
  const cleanSheets=completed.filter(m=>m.played_ids?.includes(p.id)&&!isTournament(m)&&Number(m.goals_against)===0).length;
- const titles=[];
+ const roleTitles={'Portiere':'GUARDIANO ROSSONERO','Difensore':'PILASTRO DELLA DIFESA','Centrocampista':'MOTORE DEL CENTROCAMPO','Attaccante':'BOMBER ROSSONERO','Jolly':'JOLLY ROSSONERO'};
+ const titles=[[roleTitles[p.primary_role]||'CUORE ROSSONERO','TITOLO DEL RUOLO · VOLLA UNITED ACADEMY']];
  if(top)titles.push(['CAPOCANNONIERE '+category,'MAGGIOR NUMERO DI GOL NELLA CATEGORIA']);
  if(isKeeper&&cleanSheets>=1)titles.push(['MURO ROSSONERO',`${cleanSheets} PARTITE A PORTA INVIOLATA REGISTRATE`]);
- const roleTitles={'Difensore':'PILASTRO DELLA DIFESA','Centrocampista':'MOTORE DEL CENTROCAMPO','Attaccante':'BOMBER ROSSONERO','Jolly':'JOLLY ROSSONERO','Portiere':'PRESENZA TRA I PALI'};
- if(playedCount>=10&&roleTitles[p.primary_role])titles.push([roleTitles[p.primary_role],`${playedCount} PARTITE GIOCATE · TRAGUARDO DI PARTECIPAZIONE`]);
+ if(playedCount>=10)titles.push(['PRESENZA ROSSONERA',`${playedCount} PARTITE GIOCATE · TRAGUARDO DI PARTECIPAZIONE`]);
  if(trainingPresent>=10)titles.push(['COSTANZA ROSSONERA',`${trainingPresent} ALLENAMENTI FREQUENTATI`]);
  if(qualification==='captain')titles.push(['CAPITANO','QUALIFICA UFFICIALE DELLA SQUADRA']);
  if(qualification==='vice')titles.push(['VICECAPITANO','QUALIFICA UFFICIALE DELLA SQUADRA']);
