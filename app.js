@@ -838,25 +838,32 @@ function vuSeasonSummary(p){
  </section>`;
 }
 const vuLuxuryProfileCss=`<style>
-.vu-luxury{overflow:hidden;border-radius:24px;background:#101015;border:1px solid #4c2632;box-shadow:0 18px 55px #0005;margin:14px 0 22px;color:#fff}
-.vu-luxury-cover{position:relative;isolation:isolate;min-height:320px;display:flex;flex-direction:column;justify-content:flex-end;padding:28px 22px 24px;background:radial-gradient(ellipse at 80% 30%,#82263d 0%,#351723 43%,#121217 83%)}
-.vu-luxury-cover:before{content:'';position:absolute;inset:0;background:linear-gradient(150deg,transparent 40%,#0009 100%);z-index:-1}
-.vu-luxury-cover:after{content:'';position:absolute;right:-40px;top:15px;width:190px;height:190px;border:1px solid #ffffff22;border-radius:50%;z-index:-1}
-.vu-luxury-kicker{font-size:10px;font-weight:800;letter-spacing:2.3px;color:#ffbdca;position:relative;z-index:2}
-.vu-luxury-portrait{position:relative;align-self:center;width:min(100%,310px);max-height:340px;object-fit:contain;filter:drop-shadow(0 14px 20px #0008);margin:10px auto 8px;border-radius:12px}
-.vu-luxury-name{position:relative;z-index:2;font-size:clamp(29px,8vw,48px);font-weight:900;line-height:1.04;letter-spacing:-1.1px;overflow-wrap:anywhere;text-shadow:0 3px 18px #0008}
-.vu-luxury-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:2}
-.vu-luxury-meta span{font-size:11px;letter-spacing:.5px;border:1px solid #ffffff45;background:#ffffff12;border-radius:999px;padding:8px 11px}
-.vu-luxury-body{padding:21px 17px 22px}
-.vu-luxury-heading{font-size:11px;font-weight:800;letter-spacing:2px;color:#e8a9ba;margin-bottom:13px}
-.vu-luxury-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
-.vu-luxury-stat{background:#211b24;border:1px solid #48313d;border-radius:14px;padding:16px 7px;text-align:center}
-.vu-luxury-stat strong{display:block;font-size:clamp(24px,7vw,34px);line-height:1.2;font-variant-numeric:tabular-nums;color:#fff}
-.vu-luxury-stat small{display:block;margin-top:7px;font-size:10px;letter-spacing:.4px;color:#d8c4cd}
-.vu-luxury-accent{height:3px;width:54px;background:linear-gradient(90deg,#d73559,#ffc8a0);border-radius:4px;margin-bottom:14px}
-.vu-luxury-note{margin-top:14px;color:#c8b8c0;font-size:12px;line-height:1.6}
-@media(min-width:720px){.vu-luxury-cover{min-height:360px;padding:32px 36px}.vu-luxury-body{padding:28px 36px}.vu-luxury-portrait{max-height:360px}}
-@media(prefers-reduced-motion:no-preference){.vu-luxury{animation:vuLuxuryReveal .45s ease-out both}@keyframes vuLuxuryReveal{from{opacity:.5;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}}
+.vu-club{overflow:hidden;border:1px solid #632536;border-radius:22px;background:#0d0d12;color:#fff;box-shadow:0 16px 42px #0007;margin:12px 0 18px}
+.vu-club *{box-sizing:border-box}
+.vu-club-hero{position:relative;overflow:hidden;min-height:440px;padding:23px 18px 22px;background:radial-gradient(ellipse at 92% 32%,#9b173a 0%,#421325 39%,#11131c 76%);display:flex;flex-direction:column;justify-content:space-between}
+.vu-club-hero:before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(132deg,transparent 0 70px,#0002 71px 89px,transparent 90px 160px);pointer-events:none}
+.vu-club-brand{position:relative;z-index:3;display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:1.7px;font-weight:850;color:#f5e6eb}
+.vu-club-brand img{width:45px;height:45px;object-fit:contain}
+.vu-club-stage{position:relative;flex:1;display:flex;align-items:flex-end;min-height:290px}
+.vu-club-number{position:absolute;right:-2px;top:13px;font-size:clamp(100px,31vw,165px);line-height:1;font-weight:950;letter-spacing:-12px;color:transparent;-webkit-text-stroke:2px #ffffff60;text-shadow:0 0 30px #ed264e44}
+.vu-club-person{position:relative;z-index:1;width:76%;max-height:340px;object-fit:contain;object-position:left bottom;filter:drop-shadow(0 12px 18px #0009);margin:0}
+.vu-club-identity{position:relative;z-index:2;margin-top:-4px;text-shadow:0 3px 12px #000a}
+.vu-club-identity strong{display:block;font-size:clamp(31px,8vw,48px);line-height:.98;letter-spacing:-1.5px;font-weight:950;overflow-wrap:anywhere}
+.vu-club-identity small{display:block;margin-top:13px;font-size:12px;font-weight:800;letter-spacing:1.2px;color:#f3e0e5}
+.vu-club-line{height:3px;width:90px;background:linear-gradient(90deg,#ff244f,#f0c4ca);margin:14px 0}
+.vu-club-section{padding:20px 17px;border-top:1px solid #59202e;background:linear-gradient(110deg,#171218,#0c0d12)}
+.vu-club-title{font-size:15px;font-weight:900;letter-spacing:.7px;margin-bottom:15px;display:flex;align-items:center;gap:10px}
+.vu-club-title span{color:#f3c86b}
+.vu-club-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.vu-club-stat{text-align:center;padding:8px 4px;border-right:1px solid #ffffff29}
+.vu-club-stat:last-child{border-right:0}
+.vu-club-stat strong{display:block;font-size:clamp(27px,8vw,40px);font-weight:900;line-height:1.15;font-variant-numeric:tabular-nums}
+.vu-club-stat small{display:block;margin-top:8px;color:#d9c7cc;font-size:9px;font-weight:750;letter-spacing:.5px}
+.vu-club-award{border:1px solid #9a743a;border-radius:13px;padding:14px;background:linear-gradient(120deg,#3d2818,#17131a 72%);color:#ffdf93;font-size:12px;font-weight:850;text-align:center;letter-spacing:.5px}
+.vu-club-sub{font-size:11px;color:#b9a8ae;margin-top:10px}
+.vu-club-tag{display:inline-block;margin-top:12px;background:#2a1821;border:1px solid #ffffff4a;border-radius:30px;padding:7px 11px;font-size:10px;font-weight:800;letter-spacing:.6px}
+@media(min-width:720px){.vu-club-hero{min-height:480px}.vu-club-person{max-height:390px;width:54%}.vu-club-number{font-size:185px}.vu-club-section{padding:24px 27px}}
+@media(prefers-reduced-motion:no-preference){.vu-club{animation:vuClubAppear .45s ease-out both}@keyframes vuClubAppear{from{opacity:.5;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}}
 </style>`;
 function vuLuxuryHero(p,playedCount,goalsCount,attendancePct){
  const category=upper(cats.find(c=>c.id===p.category_id)?.name||'');
@@ -864,7 +871,19 @@ function vuLuxuryHero(p,playedCount,goalsCount,attendancePct){
  const isKeeper=p.primary_role==='Portiere';
  const src=photoOf(p.id);
  const qualification=detailOf(p.id).team_role;
- return `${vuLuxuryProfileCss}<section class="vu-luxury" aria-label="Profilo di ${esc(fullName(p))}"><div class="vu-luxury-cover"><div class="vu-luxury-kicker">VOLLA UNITED ACADEMY · PROFILO UFFICIALE</div>${src?`<img class="vu-luxury-portrait" src="${esc(src)}" alt="Foto ufficiale di ${esc(fullName(p))}" loading="lazy">`:`<div class="vu-player-photo-empty">FOTO UFFICIALE NON ANCORA CARICATA</div>`}<div class="vu-luxury-name">${esc(upper(p.first_name))}<br>${esc(upper(p.last_name))}</div><div class="vu-luxury-meta"><span>${esc(category)}</span><span>${esc(role)}</span>${p.jersey_number!=null&&p.jersey_number!==''?`<span>MAGLIA N° ${esc(p.jersey_number)}</span>`:''}${qualification==='captain'?'<span>CAPITANO</span>':qualification==='vice'?'<span>VICECAPITANO</span>':''}</div></div><div class="vu-luxury-body"><div class="vu-luxury-accent"></div><div class="vu-luxury-heading">LA MIA STAGIONE</div><div class="vu-luxury-stats"><div class="vu-luxury-stat"><strong>${playedCount}</strong><small>PARTITE</small></div><div class="vu-luxury-stat"><strong>${isKeeper?'—':goalsCount}</strong><small>${isKeeper?'GOL NON PREVISTI':'GOL SEGNATI'}</small></div><div class="vu-luxury-stat"><strong>${attendancePct}%</strong><small>ALLENAMENTI</small></div></div><div class="vu-luxury-note">I NUMERI SI AGGIORNANO CON I RISULTATI E LE PRESENZE REGISTRATI DAI MISTER.</div></div></section>`;
+ const year=new Date().getMonth()>=8?new Date().getFullYear():new Date().getFullYear()-1;
+ const completed=matches.filter(m=>m.status==='completed'&&m.match_date>=`${year}-09-01`&&m.match_date<=`${year+1}-08-31`);
+ const goalCount=id=>completed.filter(m=>m.played_ids?.includes(id)).reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===id)?.goals||0),0);
+ const teammates=players.filter(x=>x.category_id===p.category_id&&x.primary_role!=='Portiere');
+ const top=!isKeeper&&goalsCount>0&&goalsCount===Math.max(0,...teammates.map(x=>goalCount(x.id)));
+ const cleanSheets=completed.filter(m=>m.played_ids?.includes(p.id)&&!isTournament(m)&&Number(m.goals_against)===0).length;
+ return `${vuLuxuryProfileCss}<article class="vu-club" aria-label="PROFILO UFFICIALE ${esc(fullName(p))}">
+ <div class="vu-club-hero"><div class="vu-club-brand"><img src="logo.png" alt="VOLLA UNITED"><span>VOLLA UNITED<br>ACADEMY · PROFILO UFFICIALE</span></div>
+ <div class="vu-club-stage"><div class="vu-club-number" aria-hidden="true">${esc(p.jersey_number??'')}</div>${src?`<img class="vu-club-person" src="${esc(src)}" alt="FOTO UFFICIALE ${esc(fullName(p))}" loading="lazy">`:`<div class="vu-player-photo-empty">FOTO UFFICIALE NON ANCORA CARICATA</div>`}</div>
+ <div class="vu-club-identity"><strong>${esc(upper(p.first_name))}<br>${esc(upper(p.last_name))}</strong><div class="vu-club-line"></div><small>${esc(role)} · CATEGORIA ${esc(category)}</small>${p.jersey_number!=null&&p.jersey_number!==''?`<div class="vu-club-tag">N° ${esc(p.jersey_number)} · MAGLIA UFFICIALE</div>`:''}${qualification==='captain'?'<div class="vu-club-tag">CAPITANO</div>':qualification==='vice'?'<div class="vu-club-tag">VICECAPITANO</div>':''}</div></div>
+ <section class="vu-club-section"><div class="vu-club-title"><span>▥</span> LA MIA STAGIONE</div><div class="vu-club-stats"><div class="vu-club-stat"><strong>${playedCount}</strong><small>PARTITE</small></div><div class="vu-club-stat"><strong>${isKeeper?cleanSheets:goalsCount}</strong><small>${isKeeper?'CLEAN SHEET':'GOL'}</small></div><div class="vu-club-stat"><strong>${attendancePct}%</strong><small>ALLENAMENTI</small></div></div></section>
+ ${top?`<section class="vu-club-section"><div class="vu-club-title"><span>🏆</span> I MIEI TRAGUARDI</div><div class="vu-club-award">🥇 CAPOCANNONIERE ${esc(category)}</div><div class="vu-club-sub">RICONOSCIMENTO BASATO SUI GOL REGISTRATI</div></section>`:''}
+ </article>`;
 }
 function playerFamilyContent(p,staffView=false){
  const now=new Date().toLocaleDateString('en-CA');
