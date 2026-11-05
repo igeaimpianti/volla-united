@@ -10,6 +10,7 @@ let vuMatchSaving=false;
 let vuPendingMatchId=null;
 let vuPlayerRequests=[];
 let vuCallupResponses=[];
+let vuResponsesLoaded=false;
 let vuResponseSaving=false;
 
 // Web Push: la chiave privata resta esclusivamente nei Secrets di Supabase.
@@ -225,10 +226,16 @@ async function vuLoadNotifications(){
  vuNotifications=data||[];
 }
 async function vuLoadCallupResponses(){
- vuCallupResponses=[];
  const {data,error}=await sb.from('vu_callup_responses').select('match_id,player_id,response,responded_at');
- if(error){console.warn('Conferme convocazioni:',error);return}
- vuCallupResponses=data||[];
+ if(error){vuResponsesLoaded=false;console.warn('Conferme convocazioni:',error);return false}
+ vuCallupResponses=data||[];vuResponsesLoaded=true;return true;
+}
+async function vuRefreshSingleResponse(matchId,playerId){
+ const {data,error}=await sb.from('vu_callup_responses').select('match_id,player_id,response,responded_at').eq('match_id',matchId).eq('player_id',playerId).maybeSingle();
+ if(error){vuResponsesLoaded=false;console.warn('Verifica conferma:',error);toast('Impossibile verificare la conferma. Riprova ad aggiornare.');return false}
+ vuCallupResponses=vuCallupResponses.filter(r=>!(r.match_id===matchId&&r.player_id===playerId));
+ if(data)vuCallupResponses.push(data);
+ vuResponsesLoaded=true;return true;
 }
 function vuResponseFor(matchId,playerId){return vuCallupResponses.find(r=>r.match_id===matchId&&r.player_id===playerId)?.response||'none'}
 function vuCallupSummary(m){
@@ -241,7 +248,8 @@ function vuCallupRoster(m){
  return `<section class="panel vu-callup-manager" id="vu-callup-detail"><h3>👥 GESTIONE CONFERME</h3><p><strong>${esc(upper(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA'))}</strong></p><p class="muted">${esc(dateIt(m.match_date))} · ${esc(upper(cats.find(c=>c.id===m.category_id)?.name||''))} · ${ids.length} CONVOCATI</p>${vuCallupSummary(m)}<p class="muted">LE CONFERME SONO LE RISPOSTE DEI GENITORI, NON LE PRESENZE EFFETTIVE IN CAMPO.</p>${groups.map(([status,title])=>{const group=ids.filter(id=>vuResponseFor(m.id,id)===status).map(id=>players.find(p=>p.id===id)).filter(Boolean).sort(sortPlayers);return `<div class="vu-confirm-group"><h4>${title} · ${group.length}</h4>${group.map(p=>`<div class="vu-confirm-player"><strong>${esc(upper(fullName(p)))}</strong><small>${esc(upper(cats.find(c=>c.id===p.category_id)?.name||''))} · ${esc(vuResponseLabel(status))}</small></div>`).join('')||'<p class="muted">NESSUN CALCIATORE</p>'}</div>`}).join('')}<button type="button" class="btn alt sm" data-refresh-callup="${esc(m.id)}">↻ AGGIORNA RISPOSTE</button></section>`;
 }
 function vuWireCallupRefresh(host){host?.querySelectorAll('[data-refresh-callup]').forEach(btn=>btn.onclick=async()=>{btn.disabled=true;try{await vuLoadCallupResponses();const m=matches.find(x=>x.id===btn.dataset.refreshCallup);if(m){host.innerHTML=vuCallupRoster(m);vuWireCallupRefresh(host)}}finally{btn.disabled=false}})}
-function vuOpenParentCallup(m,playerId){
+async function vuOpenParentCallup(m,playerId){
+ if(!await vuRefreshSingleResponse(m.id,playerId))return;
  if(me?.role!=='parent'||!m||!m.player_ids?.includes(playerId)||!players.some(p=>p.id===playerId))return toast('Convocazione non disponibile per questo bambino');
  document.getElementById('vu-parent-callup-overlay')?.remove();
  activeChild=playerId;page='family';render();
@@ -262,12 +270,14 @@ function vuOpenParentCallup(m,playerId){
 }
 async function vuSetCallupResponse(matchId,playerId,response){
  if(vuResponseSaving)return false;
+ if(!await vuRefreshSingleResponse(matchId,playerId))return false;
+ if(vuResponseFor(matchId,playerId)!=='none'){render();toast('Risposta già confermata e non modificabile');return false}
  if(me?.role!=='parent'||!players.some(p=>p.id===playerId)||!matches.some(m=>m.id===matchId&&m.player_ids?.includes(playerId))){toast('Convocazione non autorizzata');return false}
  vuResponseSaving=true;
  try{
   const {error}=await sb.rpc('vu_respond_callup',{p_match_id:matchId,p_player_id:playerId,p_response:response});
   if(error)throw error;
-  await vuLoadCallupResponses();render();toast(response==='absent'?'Assenza comunicata':'Presenza confermata');return true;
+  vuCallupResponses=vuCallupResponses.filter(r=>!(r.match_id===matchId&&r.player_id===playerId));vuCallupResponses.push({match_id:matchId,player_id:playerId,response,responded_at:new Date().toISOString()});vuResponsesLoaded=true;render();toast(response==='absent'?'Assenza confermata':'Presenza confermata');return true;
  }catch(e){toast('Errore conferma: '+e.message);return false}finally{vuResponseSaving=false}
 }
 // Gli auguri WhatsApp sono disponibili solo ai mister/admin, mai ai genitori.
@@ -1271,7 +1281,7 @@ function playerFamilyContent(p,staffView=false){
  const trainings=sessions.filter(s=>s.category_id===p.category_id).sort((a,b)=>b.training_date.localeCompare(a.training_date));
  const records=trainings.map(s=>({s,a:attendance.find(a=>a.session_id===s.id&&a.player_id===p.id)})).filter(x=>x.a);
  const present=records.filter(x=>x.a.present).length;
- return `${vuProfilePhotoCss}${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0,present)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item" data-family-match-id="${esc(m.id)}"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small>${!staffView?(vuResponseFor(m.id,p.id)==='none'?`<div class="actions" style="margin-top:10px"><button type="button" class="btn sm" data-callup-response="present" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>✅ PRESENTE</button><button type="button" class="btn alt sm" data-callup-response="absent" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>❌ ASSENTE</button></div><small>⏳ IN ATTESA</small>`:`<div class="vu-response-locked" style="margin-top:12px;padding:12px;border-radius:12px;border:1px solid #8e5265;background:#351d2b;font-weight:800">${vuResponseLabel(vuResponseFor(m.id,p.id))}</div>`):''}</div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
+ return `${vuProfilePhotoCss}${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0,present)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item" data-family-match-id="${esc(m.id)}"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small>${!staffView?(!vuResponsesLoaded?`<div class="vu-response-locked">⏳ VERIFICA CONFERME NON DISPONIBILE · AGGIORNA LA PAGINA</div>`:vuResponseFor(m.id,p.id)==='none'?`<div class="actions" style="margin-top:10px"><button type="button" class="btn sm" data-callup-response="present" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>✅ PRESENTE</button><button type="button" class="btn alt sm" data-callup-response="absent" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>❌ ASSENTE</button></div><small>⏳ IN ATTESA</small>`:`<div class="vu-response-locked" style="margin-top:12px;padding:12px;border-radius:12px;border:1px solid #8e5265;background:#351d2b;font-weight:800">${vuResponseLabel(vuResponseFor(m.id,p.id))}</div>`):''}</div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
 }
 function bindFamily(){document.querySelectorAll('[data-callup-response]').forEach(b=>b.onclick=()=>vuSetCallupResponse(b.dataset.matchId,b.dataset.playerId,b.dataset.callupResponse)); $('#child-select')?.addEventListener('change',e=>{activeChild=e.target.value;render()}) }
 function parentChildPicker(prefix, selectedIds=[]){
