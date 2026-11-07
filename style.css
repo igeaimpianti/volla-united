@@ -34,3 +34,10 @@ body {
     );
   }
 }
+
+/* iPhone: evita lo spostamento orizzontale dei moduli convocazione */
+html,body{width:100%;max-width:100%;overflow-x:clip}
+.shell,#app,#content,.panel,form,.fields,.field{min-width:0;max-width:100%}
+.fields>*{min-width:0;max-width:100%}
+input,select,textarea{max-width:100%;font-size:16px}
+@media(max-width:600px){#matchform .fields{grid-template-columns:minmax(0,1fr)}#matchform .field{min-width:0}}
