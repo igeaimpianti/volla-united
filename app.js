@@ -569,18 +569,45 @@ document.addEventListener('click',function vuTrainingInfoClick(event){
  if(!button)return;
  event.preventDefault();
  event.stopPropagation();
- try{vuShowTrainingInfo(button.dataset.trainingInfo)}catch(error){console.error('Apertura info allenamenti',error);alert('ERRORE INFO ALLENAMENTI: '+error.message)}
+ try{vuShowTrainingInfo(button.dataset.trainingInfo,button)}catch(error){console.error('Apertura info allenamenti',error);alert('ERRORE INFO ALLENAMENTI: '+error.message)}
 },true);
-function vuShowTrainingInfo(id){
+function vuShowTrainingInfo(id,anchor){
  const p=players.find(p=>p.id===id);if(!p)return;
- const count=vuTrainingCount(id),overlay=document.createElement('div');overlay.className='vu-detail-overlay';
- overlay.innerHTML=`<section class="vu-detail-dialog" role="dialog" aria-modal="true" aria-label="Informazioni convocabilità"><h3>${esc(upper(fullName(p)))}</h3><p>${count===null?'IMPOSSIBILE VERIFICARE LE PRESENZE AGLI ALLENAMENTI.':'IL CALCIATORE NON PUÒ ESSERE CONVOCATO PERCHÉ NON HA RAGGIUNTO IL NUMERO MINIMO DI ALLENAMENTI.'}</p><p>${count===null?'VERIFICA I REGISTRI PRIMA DI PROCEDERE.':count+' PRESENZE SU UN MINIMO DI 2 NELLA SETTIMANA DELLA PARTITA.'}</p><div class="actions"><button type="button" class="btn" data-override>CONVOCA UGUALMENTE</button><button type="button" class="btn alt" data-close>CHIUDI</button></div></section>`;
- const previous=document.activeElement;const close=()=>{overlay.remove();previous?.focus()};
- overlay.querySelector('[data-close]').onclick=close;
- overlay.addEventListener('keydown',e=>{if(e.key==='Escape')close();if(e.key==='Tab'){e.preventDefault();const buttons=[...overlay.querySelectorAll('button')];buttons[(buttons.indexOf(document.activeElement)+1)%buttons.length].focus()}});
- overlay.querySelector('[data-override]').onclick=()=>{try{const ids=[...new Set([...selected,id])];vuValidateCallup(ids);vuEligibilityScope();vuAttendanceExceptions.add(id);selected=ids;$('#count').textContent=selected.length;$('#vu-external-count').textContent=vuExternalCount();close();vuRefreshEligibility()}catch(err){toast(err.message)}};
- document.body.appendChild(overlay);overlay.style.cssText='position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center;justify-content:center;background:rgba(0,0,0,.88);padding:16px';overlay.querySelector('[data-close]').focus();
+ document.querySelectorAll('.vu-training-popover').forEach(x=>x.remove());
+ const count=vuTrainingCount(id);
+ const panel=document.createElement('div');
+ panel.className='vu-training-popover';
+ panel.setAttribute('role','dialog');
+ panel.setAttribute('aria-label','Informazioni convocabilità');
+ panel.style.cssText='position:fixed!important;z-index:2147483647!important;box-sizing:border-box;width:min(340px,calc(100vw - 24px));max-height:70dvh;overflow-y:auto;padding:17px;border:1px solid rgba(225,95,120,.45);border-radius:16px;background:rgba(37,20,31,.94);color:#fff;box-shadow:0 12px 36px rgba(0,0,0,.42);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);font-size:14px;line-height:1.45';
+ panel.innerHTML=`<strong style="display:block;margin-bottom:9px;font-size:15px">${esc(upper(fullName(p)))}</strong><p style="margin:0 0 8px">${count===null?'PRESENZE AGLI ALLENAMENTI NON DISPONIBILI.':'IL CALCIATORE NON HA RAGGIUNTO IL MINIMO DI 2 ALLENAMENTI.'}</p><p style="margin:0 0 14px;opacity:.8">${count===null?'VERIFICA LE PRESENZE PRIMA DI PROCEDERE.':count+' PRESENZE SU 2 RICHIESTE NELLA SETTIMANA DELLA PARTITA.'}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" data-override style="flex:1 1 auto">CONVOCA UGUALMENTE</button><button type="button" class="btn alt sm" data-close>CHIUDI</button></div>`;
+ const close=()=>{panel.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',escapeKey)};
+ const outside=e=>{if(!panel.contains(e.target)&&!e.target.closest?.('[data-training-info]'))close()};
+ const escapeKey=e=>{if(e.key==='Escape')close()};
+ panel.querySelector('[data-close]').onclick=close;
+ panel.querySelector('[data-override]').onclick=()=>{
+  try{
+   const ids=[...new Set([...selected,id])];
+   vuValidateCallup(ids);
+   vuEligibilityScope();
+   vuAttendanceExceptions.add(id);
+   selected=ids;
+   $('#count').textContent=selected.length;
+   $('#vu-external-count').textContent=vuExternalCount();
+   close();vuRefreshEligibility();
+  }catch(err){toast(err.message)}
+ };
+ document.body.appendChild(panel);
+ const rect=anchor?.getBoundingClientRect?.()||{left:12,right:40,top:innerHeight/2,bottom:innerHeight/2};
+ const width=panel.offsetWidth,height=panel.offsetHeight;
+ const left=Math.max(12,Math.min(rect.right-width,innerWidth-width-12));
+ const below=rect.bottom+8,above=rect.top-height-8;
+ const top=below+height<=innerHeight-12?below:above>=12?above:Math.max(12,Math.min(below,innerHeight-height-12));
+ panel.style.left=left+'px';panel.style.top=top+'px';
+ document.addEventListener('pointerdown',outside,true);
+ document.addEventListener('keydown',escapeKey);
 }
+
 function vuValidateTraining(ids){
  vuEligibilityScope();
  const blocked=ids.filter(id=>{const n=vuTrainingCount(id);return (n===null||n<2)&&!vuAttendanceExceptions.has(id)});
