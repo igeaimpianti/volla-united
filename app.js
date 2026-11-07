@@ -561,8 +561,16 @@ function vuRefreshEligibility(){
   try{if(el.checked&&(vuTrainingCount(el.dataset.player)===null||vuTrainingCount(el.dataset.player)<2)&&!vuAttendanceExceptions.has(el.dataset.player))throw Error('Apri le informazioni e scegli CONVOCA UGUALMENTE');vuValidateCallup(ids);selected=ids}catch(err){el.checked=false;selected=ids.filter(id=>id!==el.dataset.player);toast(err.message)}
   $('#count').textContent=selected.length;$('#vu-external-count').textContent=vuExternalCount();vuRefreshEligibility();
  });
- document.querySelectorAll('[data-training-info]').forEach(b=>b.onclick=()=>vuShowTrainingInfo(b.dataset.trainingInfo));
+ // I pulsanti informativi sono gestiti tramite delega, anche dopo il ridisegno della lista.
 }
+// Intercetta il tap prima dei gestori di riga/form: funziona anche sui pulsanti ricreati.
+document.addEventListener('click',function vuTrainingInfoClick(event){
+ const button=event.target.closest?.('[data-training-info]');
+ if(!button||!button.closest('#matchform'))return;
+ event.preventDefault();
+ event.stopPropagation();
+ vuShowTrainingInfo(button.dataset.trainingInfo);
+},true);
 function vuShowTrainingInfo(id){
  const p=players.find(p=>p.id===id);if(!p)return;
  const count=vuTrainingCount(id),overlay=document.createElement('div');overlay.className='vu-detail-overlay';
