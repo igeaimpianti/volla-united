@@ -566,10 +566,10 @@ function vuRefreshEligibility(){
 // Intercetta il tap prima dei gestori di riga/form: funziona anche sui pulsanti ricreati.
 document.addEventListener('click',function vuTrainingInfoClick(event){
  const button=event.target.closest?.('[data-training-info]');
- if(!button||!button.closest('#matchform'))return;
+ if(!button)return;
  event.preventDefault();
  event.stopPropagation();
- vuShowTrainingInfo(button.dataset.trainingInfo);
+ try{vuShowTrainingInfo(button.dataset.trainingInfo)}catch(error){console.error('Apertura info allenamenti',error);alert('ERRORE INFO ALLENAMENTI: '+error.message)}
 },true);
 function vuShowTrainingInfo(id){
  const p=players.find(p=>p.id===id);if(!p)return;
@@ -579,7 +579,7 @@ function vuShowTrainingInfo(id){
  overlay.querySelector('[data-close]').onclick=close;
  overlay.addEventListener('keydown',e=>{if(e.key==='Escape')close();if(e.key==='Tab'){e.preventDefault();const buttons=[...overlay.querySelectorAll('button')];buttons[(buttons.indexOf(document.activeElement)+1)%buttons.length].focus()}});
  overlay.querySelector('[data-override]').onclick=()=>{try{const ids=[...new Set([...selected,id])];vuValidateCallup(ids);vuEligibilityScope();vuAttendanceExceptions.add(id);selected=ids;$('#count').textContent=selected.length;$('#vu-external-count').textContent=vuExternalCount();close();vuRefreshEligibility()}catch(err){toast(err.message)}};
- document.body.appendChild(overlay);overlay.querySelector('[data-close]').focus();
+ document.body.appendChild(overlay);overlay.style.cssText='position:fixed!important;inset:0!important;z-index:2147483647!important;display:flex!important;align-items:center;justify-content:center;background:rgba(0,0,0,.88);padding:16px';overlay.querySelector('[data-close]').focus();
 }
 function vuValidateTraining(ids){
  vuEligibilityScope();
