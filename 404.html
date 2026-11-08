@@ -4,12 +4,22 @@ const slug=decodeURIComponent(location.pathname.split('/campo/')[1]||'').replace
 const status=document.getElementById('status');
 const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const safe=u=>{try{const x=new URL(u);return x.protocol==='https:'&&(['maps.app.goo.gl','share.google','goo.gl','www.openstreetmap.org'].includes(x.hostname)||/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname.startsWith('/maps'))}catch{return false}};
+const knownFields={
+'audax-casoria':'https://maps.app.goo.gl/zXHoUQ6vhAh2Q6JW6?g_st=ic',
+'boys-napoli-ponticelli':'https://maps.app.goo.gl/mXeEmeVHhySrzYaH7?g_st=ic',
+'centro-ester-barra':'https://maps.app.goo.gl/Rot67Zu6LAQQELcJ6?g_st=ic',
+'madrigal-volla':'https://maps.app.goo.gl/zev8rJH27pKtFCBh9?g_st=ic',
+'new-margherita-acerra':'https://maps.app.goo.gl/BebCvsvCW8jXc4e2A?g_st=ic',
+'stadio-de-cicco-sant-anastasia':'https://maps.app.goo.gl/sGMmqjZZQke3qjsA6?g_st=ic'
+};
 try{
 if(!slug)throw Error('Campo non specificato');
+if(knownFields[slug]){location.replace(knownFields[slug]);}else{
 const res=await fetch(SUPABASE_URL+'/rest/v1/playing_fields?select=name,maps_url',{headers:{apikey:SUPABASE_ANON_KEY,Authorization:'Bearer '+SUPABASE_ANON_KEY},cache:'no-store'});
 if(!res.ok)throw Error('Posizione non disponibile');
 const fields=await res.json();const f=fields.find(x=>normalize(x.name)===slug);
 if(!f||!safe(f.maps_url))throw Error('Posizione non trovata');
 location.replace(f.maps_url);
+}
 }catch(e){status.textContent=e.message+'. Contatta la società per ricevere la posizione.'}
 </script></body></html>
