@@ -187,7 +187,8 @@ const canonicalField=n=>fieldAliases[fieldName(n)]||fieldName(n);
 const fieldRecord=n=>playingFields.find(f=>f.name===canonicalField(n));
 const fieldMapUrl=n=>fieldRecord(n)?.maps_url||'';
 const fieldSlug=n=>fieldName(n).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-const fieldShortLink=m=>fieldLink(m)?'https://ceitsxrbpabphfplahve.supabase.co/functions/v1/campo-preview?campo='+encodeURIComponent(fieldSlug(canonicalField(m.field_name))):'';
+const shortFieldAliases={'STADIO DE CICCO - SANT’ANASTASIA':'de-cicco','CENTRO ESTER - BARRA':'ester','MADRIGAL - VOLLA':'madrigal','BOYS NAPOLI - PONTICELLI':'boys','AUDAX - CASORIA':'audax','NEW MARGHERITA - ACERRA':'margherita'};
+const fieldShortLink=m=>fieldLink(m)?'https://app.vollaunitedacademy.com/'+encodeURIComponent(shortFieldAliases[canonicalField(m.field_name)]||fieldSlug(canonicalField(m.field_name))):'';
 const fieldLink=m=>{const url=fieldMapUrl(m?.field_name);return url&&validFieldUrl(url)?url:''};
 const fieldDirections=m=>{const url=fieldLink(m);return url?`<a class="btn alt sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">📍 INDICAZIONI PER IL CAMPO</a>`:''};
 async function loadPlayingFields(){const {data,error}=await sb.from('playing_fields').select('name,maps_url').order('name');if(error){console.warn('Campi:',error);return}playingFields=data||[];refreshFieldSuggestions(false)}
