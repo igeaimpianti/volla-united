@@ -1,37 +1,29 @@
 
-/* Volla United Academy - Service Worker v20261104.2 */
-const CACHE = 'volla-united-shell-20261104-2';
+/* Volla United Academy - Offline shell */
+const CACHE = 'volla-united-offline-v1';
+const shell = ['./offline.html','./offline.js','./style.css'].map(path=>new URL(path,self.registration.scope).href);
 
-self.addEventListener('install', event =>
-  event.waitUntil(self.skipWaiting())
-);
+self.addEventListener('install',event=>{
+  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(shell)).then(()=>self.skipWaiting()));
+});
 
-self.addEventListener('activate', event =>
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(
-      keys
-        .filter(k => k.startsWith('volla-') && k !== CACHE)
-        .map(k => caches.delete(k))
-    );
+self.addEventListener('activate',event=>{
+  event.waitUntil((async()=>{
+    await Promise.all((await caches.keys()).filter(key=>key.startsWith('volla-')&&key!==CACHE).map(key=>caches.delete(key)));
     await self.clients.claim();
-  })())
-);
+  })());
+});
 
-self.addEventListener('fetch', event => {
-  const req = event.request;
-  if (
-    req.method !== 'GET' ||
-    new URL(req.url).origin !== self.location.origin
-  ) return;
-
-  if (
-    req.mode === 'navigate' ||
-    /\.(?:js|html|webmanifest|css)(?:$|\?)/i.test(
-      new URL(req.url).pathname
-    )
-  ) {
-    event.respondWith(fetch(req, {cache:'no-store'}));
+self.addEventListener('fetch',event=>{
+  const request=event.request;
+  const url=new URL(request.url);
+  if(request.method!=='GET'||url.origin!==self.location.origin)return;
+  if(request.mode==='navigate'){
+    event.respondWith(fetch(request,{cache:'no-store'}).catch(()=>caches.match(shell[0])));
+  }else if(shell.includes(url.href)){
+    event.respondWith(fetch(request,{cache:'no-store'}).catch(()=>caches.match(request)));
+  }else if(/\.(?:js|html|webmanifest|css)$/i.test(url.pathname)){
+    event.respondWith(fetch(request,{cache:'no-store'}));
   }
 });
 

@@ -1,8 +1,9 @@
+import {openOffline, hasOffline, clearOffline} from './offline.js';
 import {SUPABASE_URL,SUPABASE_ANON_KEY} from './config.js';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 const $=s=>document.querySelector(s), app=$('#app'), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const configured=SUPABASE_URL.startsWith('https://')&&SUPABASE_ANON_KEY!=='INSERISCI_ANON_KEY';
-const sb=configured?createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+const sb=configured?createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{experimental:{passkey:true}}}):null;
 let me=null,access=[],page='home',cats=[],players=[],matches=[],users=[],currentCat='',editing=null,selected=[],draft=null;
 let lastParentCredentials=null;
 let matchScorers=[];
@@ -419,9 +420,76 @@ function vuBindPasswordVisibility(){
 }
 function login(force=false){app.innerHTML=`<main class="login"><div class="loginbox"><img src="logo.png" alt="Volla United"><h1>VOLLA UNITED</h1><p class="sub">${force?'PRIMO ACCESSO · CAMBIO PASSWORD':'ACCESSO MISTER, GENITORI E ADMIN'}</p><form id="loginform" class="stack">${force?`<p class="muted">Devi scegliere una password personale prima di continuare.</p>${field('newpass','Nuova password','','password')}${field('confirm','Conferma password','','password')}`:`${field('username','Nome utente',rememberedUsername())}${field('password','Password','','password')}<label style="display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer"><input type="checkbox" id="remember-login" style="width:20px;height:20px;flex:none" ${rememberedUsername()?'checked':''}> Ricorda nome utente</label>`}<button class="btn">${force?'Salva password e accedi':'Accedi →'}</button></form><div id="autherror" class="error"></div>${!configured?'<p class="error">Configurazione Supabase mancante. Consulta README.md.</p>':''}</div></main>`;
 vuBindPasswordVisibility();
+if(!force && window.PublicKeyCredential && sb?.auth.signInWithPasskey){
+  vuExtraButton($('#loginform'), /iPhone|iPad/.test(navigator.userAgent) ? 'Accedi con Face ID' :
+    /Android/.test(navigator.userAgent) ? 'Accedi con impronta' : 'Accedi con passkey', async ()=>{
+    const {error}=await sb.auth.signInWithPasskey();
+    if(error)throw Error('Accesso con passkey non riuscito. Puoi usare la password.');
+    page='home';editing=null;draft=null;selected=[];await load();
+  });
+}
+if(!force && hasOffline())vuExtraButton($('#loginform'),'Apri archivio offline',()=>openOffline(app));
 $('#loginform').onsubmit=async e=>{e.preventDefault();$('#autherror').textContent='';try{if(!sb)throw Error('Collega Supabase per attivare il login');if(force){if(val('newpass').length<8)throw Error('Password: almeno 8 caratteri');if(val('newpass')!==val('confirm'))throw Error('Le password non coincidono');await adminCall({action:'change-password',password:val('newpass')});page='home';editing=null;draft=null;selected=[];await load();}else{const uname=val('username').toLowerCase();const email=uname.includes('@')?uname:uname+'@users.volla.invalid';const {error}=await sb.auth.signInWithPassword({email,password:val('password')});if(error)throw Error('Credenziali non valide');try{if($('#remember-login')?.checked)localStorage.setItem(rememberedUserKey,uname);else localStorage.removeItem(rememberedUserKey)}catch{}page='home';editing=null;draft=null;selected=[];await load();}}catch(err){$('#autherror').textContent=err.message}}}
+function vuExtraButton(host, label, action){
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='btn alt';
+  button.textContent=label;
+  button.onclick=async()=>{
+    button.disabled=true;
+    try{await action()}catch(error){toast(error.message)}
+    finally{button.disabled=false}
+  };
+  host.append(button);
+}
+function vuAttendanceSnapshot(session){
+  return Object.fromEntries(attendance.filter(row=>row.session_id===session?.id).map(row=>[row.player_id,row.present]));
+}
+function vuOfflineSnapshot(){
+  const ids=permitted();
+  const allowed=players.filter(p=>ids.includes(p.category_id));
+  return {
+    canEdit:me.role!=='parent',
+    categories:cats.filter(c=>ids.includes(c.id)).map(({id,name})=>({id,name})),
+    players:allowed.map(p=>({id:p.id,category:p.category_id,name:fullName(p)})),
+    sessions:me.role==='parent'?[]:sessions.filter(t=>ids.includes(t.category_id)).map(t=>({
+      id:t.id,category:t.category_id,date:t.training_date,rows:vuAttendanceSnapshot(t)
+    })),
+    matches:matches.filter(m=>ids.includes(m.category_id)&&m.status!=='completed'&&m.match_date>=vuRomeToday()
+      && (me.role!=='parent'||m.player_ids.some(id=>allowed.some(p=>p.id===id))))
+      .map(m=>({date:m.match_date,opponent:m.tournament_name||m.opponent,field:m.field_name,time:m.meeting_time||m.kick_off_time}))
+  };
+}
+async function vuSendAttendance(row){
+  const {data,error}=await sb.rpc('vu_sync_training_attendance',{
+    p_category:row.category,p_date:row.date,p_session:row.session,p_base:row.base,p_rows:row.rows
+  });
+  if(error)throw error;
+  return data;
+}
+function vuBindDeviceOptions(){
+  const menu=$('.vu-account-menu');
+  if(!menu)return;
+  if(window.PublicKeyCredential && sb.auth.registerPasskey)vuExtraButton(menu,'Attiva Face ID / impronta',async()=>{
+    const {error}=await sb.auth.registerPasskey();
+    if(error)throw Error('Attivazione passkey non riuscita: '+error.message);
+    toast('Passkey registrata');
+  });
+  vuExtraButton(menu,'Archivio offline',()=>{
+    const owner=me.id;
+    openOffline(app,{owner,snapshot:vuOfflineSnapshot(),send:async row=>{
+      const {data,error}=await sb.auth.getUser();
+      if(error||data.user?.id!==owner)throw Error('Accedi di nuovo con lo stesso account.');
+      return vuSendAttendance(row);
+    },refresh:async()=>{
+      await loadAttendance();
+      if(!vuAttendanceReady)throw Error('Registro online non disponibile.');
+      return vuOfflineSnapshot();
+    }});
+  });
+}
 async function query(table,cols='*'){const {data,error}=await sb.from(table).select(cols);if(error)throw error;return data||[]}
-async function load(){try{const {data:{user}}=await sb.auth.getUser();if(!user){me=null;login();return}const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error)throw error;me=data;if(!me.active){await sb.auth.signOut();me=null;login();toast('Account disattivato: contatta l’amministratore');return}if(me.must_change_password){page='home';login(true);return}const [newCats,newAccess,newPlayers,newMatches,newScorers,mp]=await Promise.all([query('categories'),me.role==='parent'?Promise.resolve([]):query('coach_categories'),query('players'),query('matches'),query('match_scorers'),query('match_players')]);cats=newCats;access=newAccess;players=newPlayers;matches=newMatches;matchScorers=newScorers;await Promise.all([loadPlayingFields(),loadTournamentNames()]);matches.forEach(m=>{const rows=mp.filter(x=>x.match_id===m.id).sort((a,b)=>a.sort_order-b.sort_order);m.player_ids=rows.map(x=>x.player_id);m.played_ids=rows.filter(x=>x.played).map(x=>x.player_id)});const [newUsers,newStaff]=await Promise.all([me.role==='admin'?query('profiles'):Promise.resolve([]),me.role==='parent'?Promise.resolve([]):sb.rpc('vu_category_staff').then(({data,error})=>{if(error)throw error;return data||[]}),vuLoadPlayerRequests(),me.role!=='parent'?loadPlayerDetails():Promise.resolve(),loadAttendance(),loadFamilyData(),me.role==='parent'?loadParentMatchDetails():Promise.resolve(),vuLoadNotifications(),vuLoadCallupResponses(),vuLoadFilters(),vuCheckPush(),me.role!=='parent'?loadOpponents():Promise.resolve()]);users=newUsers;vuCategoryStaff=newStaff;if(me.role==='parent')playerDetails=[];if(!permitted().includes(currentCat))currentCat=permitted()[0]||'';if(me.role==='parent'){if(page!=='notifications')page='family';if(!players.some(p=>p.id===activeChild))activeChild=players[0]?.id||''}render();await vuOpenRequestedMatch();const requestedPlayer=new URLSearchParams(location.search).get('player');if(requestedPlayer&&/^[0-9a-f-]{36}$/i.test(requestedPlayer)){const p=players.find(x=>x.id===requestedPlayer);if(p){if(me.role==='parent'){activeChild=p.id;page='family';render()}else if((me.role==='admin'||me.role==='coach')&&permitted().includes(p.category_id)){profilePlayerId=p.id;page='profile';render()}else toast('Profilo non autorizzato')}else toast('Profilo non disponibile per questo account');const u=new URL(location.href);u.searchParams.delete('player');history.replaceState(null,'',u.pathname+u.search+u.hash)}return true}catch(e){toast(e.message);console.error(e);return false}}
+async function load(){try{const {data:{user},error:authError}=await sb.auth.getUser();if(authError?.name==='AuthRetryableFetchError'){login();return false;}if(!user){me=null;login();return}const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error)throw error;me=data;if(!me.active){await sb.auth.signOut();me=null;login();toast('Account disattivato: contatta l’amministratore');return}if(me.must_change_password){page='home';login(true);return}const [newCats,newAccess,newPlayers,newMatches,newScorers,mp]=await Promise.all([query('categories'),me.role==='parent'?Promise.resolve([]):query('coach_categories'),query('players'),query('matches'),query('match_scorers'),query('match_players')]);cats=newCats;access=newAccess;players=newPlayers;matches=newMatches;matchScorers=newScorers;await Promise.all([loadPlayingFields(),loadTournamentNames()]);matches.forEach(m=>{const rows=mp.filter(x=>x.match_id===m.id).sort((a,b)=>a.sort_order-b.sort_order);m.player_ids=rows.map(x=>x.player_id);m.played_ids=rows.filter(x=>x.played).map(x=>x.player_id)});const [newUsers,newStaff]=await Promise.all([me.role==='admin'?query('profiles'):Promise.resolve([]),me.role==='parent'?Promise.resolve([]):sb.rpc('vu_category_staff').then(({data,error})=>{if(error)throw error;return data||[]}),vuLoadPlayerRequests(),me.role!=='parent'?loadPlayerDetails():Promise.resolve(),loadAttendance(),loadFamilyData(),me.role==='parent'?loadParentMatchDetails():Promise.resolve(),vuLoadNotifications(),vuLoadCallupResponses(),vuLoadFilters(),vuCheckPush(),me.role!=='parent'?loadOpponents():Promise.resolve()]);users=newUsers;vuCategoryStaff=newStaff;if(me.role==='parent')playerDetails=[];if(!permitted().includes(currentCat))currentCat=permitted()[0]||'';if(me.role==='parent'){if(page!=='notifications')page='family';if(!players.some(p=>p.id===activeChild))activeChild=players[0]?.id||''}render();await vuOpenRequestedMatch();const requestedPlayer=new URLSearchParams(location.search).get('player');if(requestedPlayer&&/^[0-9a-f-]{36}$/i.test(requestedPlayer)){const p=players.find(x=>x.id===requestedPlayer);if(p){if(me.role==='parent'){activeChild=p.id;page='family';render()}else if((me.role==='admin'||me.role==='coach')&&permitted().includes(p.category_id)){profilePlayerId=p.id;page='profile';render()}else toast('Profilo non autorizzato')}else toast('Profilo non disponibile per questo account');const u=new URL(location.href);u.searchParams.delete('player');history.replaceState(null,'',u.pathname+u.search+u.hash)}return true}catch(e){toast(e.message);console.error(e);return false}}
 // Pull to Refresh disponibile in tutte le sezioni e per tutti i ruoli.
 // Protegge le modifiche non salvate senza bloccare intere pagine.
 let vuRefreshing=false,vuPullStart=null,vuPullDistance=0,vuFormDirty=false;
@@ -459,7 +527,7 @@ document.addEventListener('touchend',async()=>{
  finally{vuRefreshing=false;setTimeout(()=>{el.style.transform='translate(-50%,-120%)'},900)}
 },{passive:true});
 document.addEventListener('touchcancel',()=>{vuPullStart=null;vuPullDistance=0;const el=document.getElementById('vu-pull-indicator');if(el)el.style.transform='translate(-50%,-120%)'},{passive:true});
-function render(){vuFormDirty=false;document.getElementById('opponent-suggestions')?.remove();app.innerHTML=`<main class="shell">${vuStyles}${page==='home'?vuDashStyles:''}${nav()}<div id="content"></div><footer class="foot">#weL⚽ve VOLLAUNITED 🔥</footer></main>`;let c=$('#content');if(me?.role==='parent'){if(page!=='notifications')page='family';c.innerHTML=page==='notifications'?vuNotificationsPage():familyPage();}else if(page==='home')c.innerHTML=home();if(page==='notifications'&&me?.role!=='parent')c.innerHTML=vuNotificationsPage();if(page==='players')c.innerHTML=roster();if(page==='matches')c.innerHTML=matchEditor();if(page==='history')c.innerHTML=history();if(page==='callhistory')c.innerHTML=callHistory();if(page==='attendance')c.innerHTML=attendancePage();if(page==='admin')c.innerHTML=admin();if(page==='profile')c.innerHTML=profilePage();bind()}
+function render(){vuFormDirty=false;document.getElementById('opponent-suggestions')?.remove();app.innerHTML=`<main class="shell">${vuStyles}${page==='home'?vuDashStyles:''}${nav()}<div id="content"></div><footer class="foot">#weL⚽ve VOLLAUNITED 🔥</footer></main>`;let c=$('#content');if(me?.role==='parent'){if(page!=='notifications')page='family';c.innerHTML=page==='notifications'?vuNotificationsPage():familyPage();}else if(page==='home')c.innerHTML=home();if(page==='notifications'&&me?.role!=='parent')c.innerHTML=vuNotificationsPage();if(page==='players')c.innerHTML=roster();if(page==='matches')c.innerHTML=matchEditor();if(page==='history')c.innerHTML=history();if(page==='callhistory')c.innerHTML=callHistory();if(page==='attendance')c.innerHTML=attendancePage();if(page==='admin')c.innerHTML=admin();if(page==='profile')c.innerHTML=profilePage();bind();vuBindDeviceOptions()}
 
 async function vuLoadPlayerRequests(){vuPlayerRequests=[];if(!['coach','admin'].includes(me?.role))return;const r=await sb.from('player_requests').select('*').order('created_at',{ascending:false}).limit(200);if(r.error){console.warn('Richieste rosa:',r.error);return;}vuPlayerRequests=r.data||[];}
 function vuPlayerApprovalPanel(){const pending=vuPlayerRequests.filter(r=>r.status==='pending');return `<div id="vu-player-approval-panel" class="vu-dash-heading"><h2>📨 RICHIESTE ROSA DA APPROVARE</h2><span>${pending.length} IN ATTESA</span></div><section class="vu-dash-panel">${pending.map(r=>{const p=players.find(p=>p.id===r.player_id),d=r.player_data||{},name=r.request_type==='add'?`${d.last_name||''} ${d.first_name||''}`:p?fullName(p):'CALCIATORE NON DISPONIBILE';const requester=users.find(u=>u.id===r.requested_by);return `<div class="vu-dash-category" data-player-request-id="${esc(r.id)}" style="display:block"><strong>${r.request_type==='add'?'➕ INSERIMENTO':'➖ RIMOZIONE'} · ${esc(upper(name))}</strong><small>${esc(upper(cats.find(c=>c.id===r.category_id)?.name||''))} · MISTER: ${esc(upper(requester?.full_name||'NON DISPONIBILE'))}</small><div class="actions" style="margin-top:10px"><button class="btn sm" data-review-player="${esc(r.id)}" data-approve="yes">✓ APPROVA</button><button class="btn alt sm" data-review-player="${esc(r.id)}" data-approve="no">✕ RIFIUTA</button></div></div>`}).join('')||'<div class="vu-dash-empty">NESSUNA RICHIESTA IN ATTESA</div>'}</section>`}
@@ -855,9 +923,9 @@ function bindAttendance(){
         btn.disabled=false;
         return;
       }
-      if(!sess){const r=await sb.from('training_sessions').insert({category_id:currentCat,training_date:attendanceDate,created_by:me.id}).select('id').single();if(r.error)throw r.error;sess=r.data}
-      const data=ps.map(p=>({session_id:sess.id,player_id:p.id,present:!!document.querySelector(`[data-attend="${p.id}"]`)?.checked}));
-      const r=await sb.from('training_attendance').upsert(data,{onConflict:'session_id,player_id'});if(r.error)throw r.error;
+      const rows=Object.fromEntries(ps.map(p=>[p.id,!!document.querySelector(`[data-attend="${p.id}"]`)?.checked]));
+      const result=await vuSendAttendance({category:currentCat,date:attendanceDate,session:sess?.id??null,base:vuAttendanceSnapshot(sess),rows});
+      if(result==='conflict')throw Error('Registro modificato su un altro dispositivo. Aggiorna le presenze e riprova.');
       await loadAttendance();render();toast('Presenze salvate correttamente');
     }catch(err){toast('Errore: '+err.message);btn.disabled=false}
   });
@@ -1117,7 +1185,7 @@ if(action==='share-match'){
  if(!allowed(m.category_id,'view'))throw Error('Non autorizzato');
  shareWhatsApp(formatMessage(m));return;
 }
-if(action==='export-roster'){await exportRosterPdf();return}if(action==='logout'){await sb.auth.signOut();me=null;page='home';editing=null;draft=null;selected=[];currentCat='';login();return}if(action==='new-player'||action==='edit-player'){if(me?.role==='coach'&&action==='edit-player')throw Error('Modifica riservata all’Admin');let p=players.find(p=>p.id===id);window._editPlayer=p?.id||null;$('#playerform').innerHTML=playerForm(p);bindPlayer();$('#playerform').scrollIntoView({behavior:'smooth'});$('#playerform [data-action="close-player"]').onclick=()=>$('#playerform').innerHTML='';return}if(action==='close-player'){$('#playerform').innerHTML='';return}if(action==='toggle-player-active'){if(me?.role!=='admin')throw Error('Operazione riservata all’amministratore');const p=players.find(x=>x.id===id);if(!p)throw Error('Calciatore non trovato');const next=p.active===false;if(!confirm((next?'Riattivare ':'Disattivare ')+fullName(p)+'? Lo storico verrà conservato.'))return;const r=await sb.rpc('vu_admin_set_player_active',{p_player_id:id,p_active:next});if(r.error)throw r.error;await load();render();toast(next?'Calciatore riattivato':'Calciatore disattivato');return}
+if(action==='export-roster'){await exportRosterPdf();return}if(action==='logout'){if(hasOffline()&&!confirm('Uscendo elimini da questo dispositivo l’archivio offline e le presenze ancora in attesa di invio. Continuare?'))return;await sb.auth.signOut();me=null;page='home';editing=null;draft=null;selected=[];currentCat='';login();return}if(action==='new-player'||action==='edit-player'){if(me?.role==='coach'&&action==='edit-player')throw Error('Modifica riservata all’Admin');let p=players.find(p=>p.id===id);window._editPlayer=p?.id||null;$('#playerform').innerHTML=playerForm(p);bindPlayer();$('#playerform').scrollIntoView({behavior:'smooth'});$('#playerform [data-action="close-player"]').onclick=()=>$('#playerform').innerHTML='';return}if(action==='close-player'){$('#playerform').innerHTML='';return}if(action==='toggle-player-active'){if(me?.role!=='admin')throw Error('Operazione riservata all’amministratore');const p=players.find(x=>x.id===id);if(!p)throw Error('Calciatore non trovato');const next=p.active===false;if(!confirm((next?'Riattivare ':'Disattivare ')+fullName(p)+'? Lo storico verrà conservato.'))return;const r=await sb.rpc('vu_admin_set_player_active',{p_player_id:id,p_active:next});if(r.error)throw r.error;await load();render();toast(next?'Calciatore riattivato':'Calciatore disattivato');return}
 if(action==='delete-player'){const p=players.find(x=>x.id===id);if(!p)throw Error('Calciatore non trovato');if(me?.role==='coach'){if(!permitted().includes(p.category_id))throw Error('Calciatore non autorizzato');if(!confirm('Inviare richiesta di rimozione di '+fullName(p)+' all’Admin?'))return;const r=await sb.rpc('submit_player_request',{p_category_id:p.category_id,p_request_type:'remove',p_player_id:p.id,p_player_data:{}});if(r.error)throw r.error;await vuLoadPlayerRequests();toast('Richiesta di rimozione inviata');return;}if(me?.role!=='admin')throw Error('Eliminazione riservata all’amministratore');const name=fullName(p);const category=cats.find(c=>c.id===p.category_id)?.name||'';if(!confirm('ELIMINAZIONE DEFINITIVA\\n'+name+' — '+category+'\\nSaranno cancellati anche convocazioni, presenze, statistiche e collegamenti personali. Continuare?'))return;const typed=prompt('ULTIMA CONFERMA: scrivi ELIMINA per cancellare definitivamente '+name);if(typed!=='ELIMINA'){toast('Eliminazione annullata');return;}const r=await sb.rpc('vu_admin_delete_player',{p_player_id:id});if(r.error)throw r.error;await load();render();toast('Calciatore e dati collegati eliminati');return}
 if(action==='preview'){preview(getDraft(),'#previewarea');return}if(action==='edit-match'){const m=matches.find(x=>x.id===id);if(!m||m.status==='completed'||!(me.role==='admin'||allowed(m.category_id,'convocate')))return toast('Modifica non autorizzata');vuEligibilityContext='';vuAttendanceExceptions.clear();editing=m.id;currentCat=m.category_id;draft={...m};selected=[...(m.player_ids||[])];page='matches';render();const cat=$('#category');if(cat){cat.disabled=true;cat.title='La categoria non può essere modificata per una convocazione già salvata'}return;}if(action==='result-match'){const m=matches.find(x=>x.id===id);if(!m||!(me.role==='admin'||allowed(m.category_id,'convocate')))return toast('Non autorizzato');openResult(m);return}if(action==='view-match'){const m=matches.find(x=>x.id===id);if(!m)return;const host=$('#historydetail')||$('#profile-match-detail');if(!host)return;host.innerHTML=matchDetail(m)+(me.role!=='parent'?`<div class="actions"><button class="btn alt" id="edit-result">Modifica risultato</button><button class="btn alt" id="delete-result">Elimina partita</button></div>`:'');host.scrollIntoView({behavior:'smooth'});if(me.role!=='parent'){const edit=$('#edit-result');if(edit)edit.onclick=()=>{if(me.role!=='admin'&&!allowed(m.category_id,'convocate'))return toast('Non autorizzato');page='history';currentCat=m.category_id;render();openResult(m)};const del=$('#delete-result');if(del)del.onclick=async()=>{if(me.role!=='admin'&&!allowed(m.category_id,'convocate'))return toast('Non autorizzato');if(!confirm('Eliminare definitivamente la partita e tutte le statistiche collegate?'))return;const r=await sb.from('matches').delete().eq('id',m.id);if(r.error)return toast(r.error.message);await load()}}return}if(action==='delete-match'){const m=matches.find(x=>x.id===id);if(!m||!(me.role==='admin'||allowed(m.category_id,'convocate')))return toast('Non autorizzato');if(!confirm('Eliminare definitivamente questa convocazione?'))return;const r=await sb.from('matches').delete().eq('id',id);if(r.error)throw r.error;await load();return}if(action==='copy'){await copyMessage(window._previewText);return}if(action==='whatsapp'){shareWhatsApp(window._previewText);return}if(action==='edit-parent'||action==='archive-parent'||action==='restore-parent'||action==='reset-parent'||action==='children-parent'){await parentAdminAction(action,id);return}if(action==='rename-category'){
  if(me?.role!=='admin')throw Error('Operazione riservata all’amministratore');
@@ -1506,7 +1574,7 @@ function bindParentsAdmin(){ getNewParentChildren=bindParentChildPicker('new-par
 async function parentAdminAction(action,id){const u=users.find(x=>x.id===id&&x.role==='parent');if(!u)throw Error('Genitore non trovato');if(action==='children-parent'){const r=await adminCall({action:'get-children',user_id:id});const old=r.player_ids||[];const overlay=document.createElement('div');overlay.id='children-overlay';overlay.className='panel';overlay.style.cssText='position:fixed;inset:5%;overflow:auto;z-index:999;background:#211921;border:2px solid #c49a45;box-shadow:0 0 0 999px #000b';overlay.innerHTML=`<h3>Figli di ${esc(u.full_name)}</h3>${parentChildPicker('edit-parent',old)}<div class="actions"><button class="btn" id="save-children">Salva</button><button class="btn alt" id="close-children">Chiudi</button></div>`;document.body.appendChild(overlay);const getEditedChildren=bindParentChildPicker('edit-parent',old);$('#close-children').onclick=()=>overlay.remove();$('#save-children').onclick=async()=>{try{const ids=getEditedChildren();await adminCall({action:'set-children',user_id:id,player_ids:ids});overlay.remove();toast('Figli aggiornati')}catch(err){toast(err.message)}};return}if(action==='edit-parent'){const name=prompt('Nome e cognome:',u.full_name);if(name===null||!name.trim())return;const r=await sb.from('profiles').update({full_name:name.trim()}).eq('id',id);if(r.error)throw r.error;await load();return}if(action==='reset-parent'){if(!confirm('Generare una nuova password?'))return;const r=await adminCall({action:'reset',user_id:id});alert('Password temporanea: '+r.temporary_password);return}const active=action==='restore-parent';if(!confirm(`${active?'Riattivare':'Archiviare'} ${u.full_name}?`))return;await adminCall({action:'set-active',user_id:id,active});await load();toast('Account aggiornato')}
 
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(console.warn);
-if(sb){sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'){me=null;page='home';editing=null;draft=null;selected=[];currentCat='';login()}});load()}else login();
+if(sb){sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'){clearOffline();me=null;page='home';editing=null;draft=null;selected=[];currentCat='';login()}});load()}else login();
 
 // Quando iOS mantiene la PWA in memoria, non modificare pagina o form
 // al passaggio in background / ritorno in primo piano.
