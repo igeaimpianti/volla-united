@@ -182,7 +182,7 @@ function refreshOpponentSuggestions(show=true){
 let playingFields=[];
 const fieldName=n=>upper(n).trim().replace(/\s+/g,' ');
 const validFieldUrl=u=>{try{const x=new URL(u);return x.protocol==='https:'&&(/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname.startsWith('/maps')||['maps.app.goo.gl','goo.gl','share.google','www.openstreetmap.org'].includes(x.hostname))}catch{return false}};
-const fieldRecord=n=>playingFields.find(f=>f.name===fieldName(n));
+const fieldRecord=n=>playingFields.find(f=>f.name===(fieldName(n)==='CENTRO ESTER(BARRA)'?'CENTRO ESTER - BARRA':fieldName(n)));
 const fieldMapUrl=n=>fieldRecord(n)?.maps_url||'';
 const fieldSlug=n=>fieldName(n).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const fieldShortLink=m=>fieldLink(m)?'https://app.vollaunitedacademy.com/campo/'+encodeURIComponent(fieldSlug(m.field_name)):'';
@@ -191,7 +191,7 @@ const fieldDirections=m=>{const url=fieldLink(m);return url?`<a class="btn alt s
 async function loadPlayingFields(){const {data,error}=await sb.from('playing_fields').select('name,maps_url').order('name');if(error){console.warn('Campi:',error);return}playingFields=data||[];refreshFieldSuggestions(false)}
 function refreshFieldSuggestions(show=true){
  const input=$('#fieldname'),box=$('#field-suggestions');if(!input||!box)return;
- const q=fieldName(input.value);const names=[...new Set([...playingFields.map(f=>f.name),...matches.map(m=>fieldName(m.field_name)).filter(Boolean)])].sort();
+ const q=fieldName(input.value);const names=[...new Set([...playingFields.map(f=>f.name),...matches.map(m=>fieldName(m.field_name)==='CENTRO ESTER(BARRA)'?'CENTRO ESTER - BARRA':fieldName(m.field_name)).filter(Boolean)])].sort();
  box.innerHTML=q.length>=2?names.filter(n=>n.includes(q)).slice(0,25).map(n=>`<button type="button" data-field="${esc(n)}" style="display:block;width:100%;text-align:left;padding:12px;background:#24151d;color:white;border:0;border-bottom:1px solid #54313e">${esc(n)}</button>`).join(''):'';
  box.style.display=show&&box.innerHTML?'block':'none';
  box.querySelectorAll('[data-field]').forEach(b=>{b.onpointerdown=e=>e.preventDefault();b.onclick=()=>{input.value=b.dataset.field;box.style.display='none';updateFieldLocationInput()}});
