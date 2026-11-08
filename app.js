@@ -740,9 +740,12 @@ async function copyMessage(message){
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
-  // Navigazione diretta sul click: iOS PWA può bloccare window.open in una nuova finestra.
-  const url='https://api.whatsapp.com/send?text='+encodeURIComponent(message);
-  window.location.assign(url);
+  // Il passaggio tramite api.whatsapp.com su iOS può estrarre solo il link
+  // incorporato e scartare il resto del messaggio: usa il deep link testuale.
+  const encoded=encodeURIComponent(message);
+  const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  const url=isiOS?'whatsapp://send?text='+encoded:'https://wa.me/?text='+encoded;
+  window.location.href=url;
 }
 
 
