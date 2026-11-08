@@ -400,13 +400,14 @@ function vuBindPasswordVisibility(){
  document.querySelectorAll('#loginform input[type="password"]').forEach(input=>{
   input.autocomplete=input.id==='password'?'current-password':'new-password';
   const control=document.createElement('div');
+  const label=input.labels[0].textContent.toLowerCase();
   control.className='vu-password-control';
   input.replaceWith(control);
   const button=document.createElement('button');
   button.type='button';button.className='vu-password-toggle';
   button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="vu-eye-slash" d="m3 3 18 18"/></svg>';
   button.setAttribute('aria-controls',input.id);
-  button.setAttribute('aria-label','Mostra '+input.labels[0].textContent.toLowerCase());
+  button.setAttribute('aria-label','Mostra '+label);
   button.setAttribute('aria-pressed','false');
   button.onclick=()=>{
    const visible=input.type==='password';
