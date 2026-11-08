@@ -1,9 +1,11 @@
 <!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Posizione campo | Volla United Academy</title><meta name="robots" content="noindex"><style>body{font-family:system-ui;background:#160e13;color:white;display:grid;place-items:center;min-height:90vh;text-align:center;padding:20px}a{color:#ff5476}</style></head><body><main><h2>📍 Posizione campo</h2><p id="status">Apertura Google Maps…</p><a href="https://app.vollaunitedacademy.com/">Volla United Academy</a></main><script type="module">
 import {SUPABASE_URL,SUPABASE_ANON_KEY} from '/config.js';
-const slug=decodeURIComponent(location.pathname.split('/campo/')[1]||'').replace(/\/+$/,'');
+const slug=decodeURIComponent(location.pathname.replace(/^\/campo\//,'/').replace(/^\/+|\/+$/g,''));
 const status=document.getElementById('status');
 const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const safe=u=>{try{const x=new URL(u);return x.protocol==='https:'&&(['maps.app.goo.gl','share.google','goo.gl','www.openstreetmap.org'].includes(x.hostname)||/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname.startsWith('/maps'))}catch{return false}};
+const aliases={'de-cicco':'stadio-de-cicco-sant-anastasia','ester':'centro-ester-barra','madrigal':'madrigal-volla','boys':'boys-napoli-ponticelli','audax':'audax-casoria','margherita':'new-margherita-acerra'};
+const lookupSlug=aliases[slug]||slug;
 const knownFields={
 'audax-casoria':'https://maps.app.goo.gl/zXHoUQ6vhAh2Q6JW6?g_st=ic',
 'boys-napoli-ponticelli':'https://maps.app.goo.gl/mXeEmeVHhySrzYaH7?g_st=ic',
@@ -14,10 +16,10 @@ const knownFields={
 };
 try{
 if(!slug)throw Error('Campo non specificato');
-if(knownFields[slug]){location.replace(knownFields[slug]);}else{
+if(knownFields[lookupSlug]){location.replace(knownFields[lookupSlug]);}else{
 const res=await fetch(SUPABASE_URL+'/rest/v1/playing_fields?select=name,maps_url',{headers:{apikey:SUPABASE_ANON_KEY,Authorization:'Bearer '+SUPABASE_ANON_KEY},cache:'no-store'});
 if(!res.ok)throw Error('Posizione non disponibile');
-const fields=await res.json();const f=fields.find(x=>normalize(x.name)===slug);
+const fields=await res.json();const f=fields.find(x=>normalize(x.name)===lookupSlug);
 if(!f||!safe(f.maps_url))throw Error('Posizione non trovata');
 location.replace(f.maps_url);
 }
