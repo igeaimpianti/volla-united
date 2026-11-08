@@ -181,7 +181,7 @@ function refreshOpponentSuggestions(show=true){
 
 let playingFields=[];
 const fieldName=n=>upper(n).trim().replace(/\s+/g,' ');
-const validFieldUrl=u=>{try{const x=new URL(u);return x.protocol==='https:'&&(/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname.startsWith('/maps')||['maps.app.goo.gl','goo.gl','www.openstreetmap.org'].includes(x.hostname))}catch{return false}};
+const validFieldUrl=u=>{try{const x=new URL(u);return x.protocol==='https:'&&(/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname.startsWith('/maps')||['maps.app.goo.gl','goo.gl','share.google','www.openstreetmap.org'].includes(x.hostname))}catch{return false}};
 const fieldRecord=n=>playingFields.find(f=>f.name===fieldName(n));
 const fieldMapUrl=n=>fieldRecord(n)?.maps_url||'';
 const fieldLink=m=>{const url=fieldMapUrl(m?.field_name);return url&&validFieldUrl(url)?url:''};
