@@ -717,7 +717,7 @@ function formatMessage(m){const dt=new Date(m.match_date+'T12:00:00');const date
 function preview(m,target){
   const text=formatMessage(m);
   const area=$(target);if(!area)return;
-  area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview">${esc(text)}</div><div class="actions"><button class="btn" type="button" data-action="copy">📋 Copia convocazione completa</button><button class="btn alt" type="button" data-action="whatsapp">🟢 Apri WhatsApp (verifica testo)</button></div></section>`;
+  area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview">${esc(text)}</div><div class="actions"><button class="btn" type="button" data-action="copy">📋 Copia convocazione completa</button><button class="btn" type="button" data-action="whatsapp">🟢 Condividi WhatsApp</button></div></section>`;
   window._previewText=text;
   // Il testo viene passato direttamente: niente riferimenti a pulsanti creati prima.
   area.querySelector('[data-action="copy"]')?.addEventListener('click',()=>copyMessage(text));
@@ -738,14 +738,16 @@ async function copyMessage(message){
   if(area){area.style.userSelect='text';area.style.webkitUserSelect='text'}
   toast('Copia non disponibile: tieni premuto sul testo per copiarlo');
 }
-function shareWhatsApp(message){
+async function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
-  // Il passaggio tramite api.whatsapp.com su iOS può estrarre solo il link
-  // incorporato e scartare il resto del messaggio: usa il deep link testuale.
-  const encoded=encodeURIComponent(message);
-  const isiOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
-  const url=isiOS?'whatsapp://send?text='+encoded:'https://wa.me/?text='+encoded;
-  window.location.href=url;
+  // Passa l'intero testo come payload di condivisione, senza url separato:
+  // iOS/WhatsApp può altrimenti trasformare la condivisione nel solo collegamento.
+  if(navigator.share){
+    try{await navigator.share({text:message});return}
+    catch(e){if(e.name==='AbortError')return;console.warn('Condivisione nativa:',e)}
+  }
+  // Fallback per browser che non supportano Web Share.
+  window.location.href='https://wa.me/?text='+encodeURIComponent(message);
 }
 
 
