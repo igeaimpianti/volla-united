@@ -717,7 +717,7 @@ function formatMessage(m){const dt=new Date(m.match_date+'T12:00:00');const date
 function preview(m,target){
   const text=formatMessage(m);
   const area=$(target);if(!area)return;
-  area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview">${esc(text)}</div><div class="actions"><button class="btn alt" type="button" data-action="copy">📋 Copia</button><button class="btn" type="button" data-action="whatsapp">🟢 Condividi WhatsApp</button></div></section>`;
+  area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview">${esc(text)}</div><div class="actions"><button class="btn" type="button" data-action="copy">📋 Copia convocazione completa</button><button class="btn alt" type="button" data-action="whatsapp">🟢 Apri WhatsApp (verifica testo)</button></div></section>`;
   window._previewText=text;
   // Il testo viene passato direttamente: niente riferimenti a pulsanti creati prima.
   area.querySelector('[data-action="copy"]')?.addEventListener('click',()=>copyMessage(text));
