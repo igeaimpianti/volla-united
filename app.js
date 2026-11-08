@@ -58,37 +58,39 @@ async function vuEnablePush(){
 const vuPushActivation=()=>vuDeviceSubscribed?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi gli avvisi Volla United, inclusi i compleanni dei calciatori della tua categoria. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
 function vuRequestedMatch(){return new URLSearchParams(location.search).get('vu_match')}
 function vuRequestedNotification(){return new URLSearchParams(location.search).get('notification')}
-function vuClearPushUrl(){const u=new URL(location.href);u.searchParams.delete('notification');u.searchParams.delete('vu_match');u.searchParams.delete('notifications');window.history.replaceState(null,'',u.pathname+u.search+u.hash)}
+function vuClearPushUrl(){const u=new URL(location.href);u.searchParams.delete('notification');u.searchParams.delete('vu_match');u.searchParams.delete('vu_player');u.searchParams.delete('notifications');window.history.replaceState(null,'',u.pathname+u.search+u.hash)}
 async function vuOpenRequestedMatch(){
  if(!['parent','coach','admin'].includes(me?.role))return;
  const noticeId=vuRequestedNotification(),matchId=vuRequestedMatch(),openInbox=new URLSearchParams(location.search).has('notifications');
  if(!noticeId&&!matchId&&!openInbox)return;
  page='notifications';render();
- if(noticeId){
-   const n=vuNotifications.find(x=>x.id===noticeId);
-   if(n)await vuOpenNotification(n.id);
-   else toast('Notifica non disponibile: apri la campanella per controllare gli avvisi.');
- }else if(matchId){
-   const n=vuNotifications.find(x=>x.match_id===matchId);
-   if(n)await vuOpenNotification(n.id);
-   else{const m=matches.find(x=>x.id===matchId);if(m&&m.player_ids?.some(pid=>players.some(p=>p.id===pid)))vuShowNotificationMatch(m);}
- }
+ const notice=noticeId?vuNotifications.find(n=>n.id===noticeId):null;
+ const match=matchId?matches.find(m=>m.id===matchId):null;
+ const playerId=new URLSearchParams(location.search).get('vu_player');
+ const eligibleMatch=match&&(me.role==='parent'
+   ?match.player_ids?.some(id=>players.some(p=>p.id===id))
+   :permitted().includes(match.category_id));
+ if(notice)await vuOpenNotification(notice.id,playerId);
+ else if(eligibleMatch)vuShowNotificationMatch(match,null,playerId);
+ else if(noticeId||matchId)toast('Convocazione non disponibile. Controlla gli avvisi dalla campanella.');
  vuClearPushUrl();
 }
-function vuNotificationChild(m,n){
+function vuNotificationChild(m,n,playerId){
  const candidates=players.filter(p=>(m.player_ids||[]).includes(p.id));
+ const requested=candidates.find(p=>p.id===playerId);
+ if(requested)return requested;
  if(candidates.length===1)return candidates[0];
  const body=upper(n?.body||'');
  const matched=candidates.filter(p=>body.includes(upper(p.first_name+' '+p.last_name))||body.includes(upper(p.last_name+' '+p.first_name)));
  return matched.length===1?matched[0]:null;
 }
-function vuShowNotificationMatch(m,n=null){
+function vuShowNotificationMatch(m,n=null,playerId=null){
  if(!m)return toast('Convocazione non trovata');
  if(me?.role==='parent'&&m.status!=='completed'){
   const candidates=players.filter(p=>(m.player_ids||[]).includes(p.id));
-  const target=vuNotificationChild(m,n);
+  const target=vuNotificationChild(m,n,playerId);
   if(target)return vuOpenParentCallup(m,target.id);
-  if(candidates.length===1)return vuOpenParentCallup(m,candidates[0].id);
+  if(!candidates.length)return toast('Convocazione non disponibile per questo account');
   page='notifications';render();
   const host=$('#notification-match-detail');if(!host)return;
   host.innerHTML=`<section class="panel"><h3>SELEZIONA IL FIGLIO CONVOCATO</h3>${candidates.map(p=>`<button type="button" class="btn alt" data-select-notification-child="${esc(p.id)}">${esc(upper(fullName(p)))}</button>`).join('')}</section>`;
@@ -190,7 +192,7 @@ const fieldSlug=n=>fieldName(n).normalize('NFD').replace(/[\u0300-\u036f]/g,'').
 const shortFieldAliases={'STADIO DE CICCO - SANT’ANASTASIA':'de-cicco','CENTRO ESTER - BARRA':'ester','MADRIGAL - VOLLA':'madrigal','BOYS NAPOLI - PONTICELLI':'boys','AUDAX - CASORIA':'audax','NEW MARGHERITA - ACERRA':'margherita'};
 const fieldShortLink=m=>fieldLink(m)?'https://app.vollaunitedacademy.com/'+encodeURIComponent(shortFieldAliases[canonicalField(m.field_name)]||fieldSlug(canonicalField(m.field_name))):'';
 const fieldLink=m=>{const url=fieldMapUrl(m?.field_name);return url&&validFieldUrl(url)?url:''};
-const fieldDirections=m=>{const url=fieldLink(m);return url?`<a class="btn alt sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">📍 INDICAZIONI PER IL CAMPO</a>`:''};
+const fieldDirections=(m,label='📍 INDICAZIONI PER IL CAMPO')=>{const url=fieldLink(m);return url?`<a class="btn alt sm" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`:''};
 async function loadPlayingFields(){const {data,error}=await sb.from('playing_fields').select('name,maps_url').order('name');if(error){console.warn('Campi:',error);return}playingFields=data||[];refreshFieldSuggestions(false)}
 function refreshFieldSuggestions(show=true){
  const input=$('#fieldname'),box=$('#field-suggestions');if(!input||!box)return;
@@ -314,13 +316,13 @@ function vuCallupRoster(m){
 }
 function vuWireCallupRefresh(host){host?.querySelectorAll('[data-refresh-callup]').forEach(btn=>btn.onclick=async()=>{btn.disabled=true;try{await vuLoadCallupResponses();const m=matches.find(x=>x.id===btn.dataset.refreshCallup);if(m){host.innerHTML=vuCallupRoster(m);vuWireCallupRefresh(host)}}finally{btn.disabled=false}})}
 async function vuOpenParentCallup(m,playerId){
- if(!await vuRefreshSingleResponse(m.id,playerId))return;
  if(me?.role!=='parent'||!m||!m.player_ids?.includes(playerId)||!players.some(p=>p.id===playerId))return toast('Convocazione non disponibile per questo bambino');
+ if(!await vuRefreshSingleResponse(m.id,playerId))return;
  document.getElementById('vu-parent-callup-overlay')?.remove();
  activeChild=playerId;page='family';render();
  const p=players.find(x=>x.id===playerId),r=vuResponseFor(m.id,playerId);
  const overlay=document.createElement('div');overlay.className='vu-detail-overlay vu-parent-callup-fullscreen';overlay.id='vu-parent-callup-overlay';
- overlay.innerHTML=`<section class="vu-detail-dialog" role="dialog" aria-modal="true" aria-label="Conferma convocazione"><div class="vu-detail-head"><h2>⚽ CONFERMA CONVOCAZIONE</h2><button type="button" id="vu-close-parent-callup" aria-label="Chiudi">✕</button></div><div class="vu-detail-scroll"><h3>${esc(upper(fullName(p)))}</h3><p>${esc(upper(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA'))}</p><p>📅 ${esc(dateIt(m.match_date))} · ${esc(upper(m.field_name||''))}</p><p>STATO ATTUALE: <strong>${vuResponseLabel(r)}</strong></p>${r==='none'?`<p class="muted">LA RISPOSTA SARÀ DEFINITIVA DOPO IL SALVATAGGIO.</p><div class="actions"><button type="button" class="btn" id="vu-parent-present">✅ CONFERMO PRESENZA</button><button type="button" class="btn alt" id="vu-parent-absent">❌ COMUNICO ASSENZA</button></div>`:`<p class="muted">RISPOSTA REGISTRATA. NON È POSSIBILE MODIFICARLA.</p>`}<p id="vu-response-error" role="alert" class="error" hidden></p></div></section>`;
+ overlay.innerHTML=`<section class="vu-detail-dialog" role="dialog" aria-modal="true" aria-label="Conferma convocazione"><div class="vu-detail-head"><h2>⚽ CONFERMA CONVOCAZIONE</h2><button type="button" id="vu-close-parent-callup" aria-label="Chiudi">✕</button></div><div class="vu-detail-scroll"><h3>${esc(upper(fullName(p)))}</h3><p>${esc(upper(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA'))}</p><p>📅 ${esc(dateIt(m.match_date))} · ${esc(upper(m.field_name||''))}</p><p>RADUNO: ${esc((m.meeting_time||'').slice(0,5)||'DA DEFINIRE')}</p>${fieldDirections(m,'📍 APRI MAPPA')}<p>STATO ATTUALE: <strong>${vuResponseLabel(r)}</strong></p>${r==='none'?`<p class="muted">LA RISPOSTA SARÀ DEFINITIVA DOPO IL SALVATAGGIO.</p><div class="actions"><button type="button" class="btn" id="vu-parent-present">✅ CONFERMO PRESENZA</button><button type="button" class="btn alt" id="vu-parent-absent">❌ COMUNICO ASSENZA</button></div>`:`<p class="muted">RISPOSTA REGISTRATA. NON È POSSIBILE MODIFICARLA.</p>`}<p id="vu-response-error" role="alert" class="error" hidden></p></div></section>`;
  document.body.appendChild(overlay);
  overlay.querySelector('#vu-close-parent-callup').onclick=()=>{overlay.remove();page='family';render()};
  for(const [id,response] of [['vu-parent-present','present'],['vu-parent-absent','absent']]){const action=overlay.querySelector('#'+id);if(!action)continue;action.onclick=async()=>{
@@ -365,11 +367,11 @@ function vuShareBirthday(id){
 function vuNotificationsPage(){
  return `${vuPushActivation()}<section class="panel"><h2>🔔 Notifiche</h2>${vuNotificationError?`<p class="muted">${esc(vuNotificationError)}</p>`:''}<div class="actions"><button class="btn alt sm" type="button" data-action="read-all-notifications">Segna tutte come lette</button></div>${vuNotifications.map(n=>`<button type="button" class="vu-notification ${n.read_at?'':'vu-notification-new'}" data-notification="${esc(n.id)}"><strong>${esc(n.title)}</strong><span>${esc(n.body||'')}</span><small>${esc(new Date(n.created_at).toLocaleString('it-IT'))}${n.read_at?'':' · Da leggere'}</small></button>${vuBirthdayShareButton(n)}`).join('')||'<p class="muted">Non hai notifiche.</p>'}</section><div id="notification-match-detail"></div>`;
 }
-async function vuOpenNotification(id){
+async function vuOpenNotification(id,playerId=null){
  const n=vuNotifications.find(x=>x.id===id);if(!n)return;
- if(!n.read_at){const {error}=await sb.from('notifications').update({read_at:new Date().toISOString()}).eq('id',id).eq('recipient_id',me.id);if(error){toast(error.message);return}n.read_at=new Date().toISOString()}
+ if(!n.read_at){const {error}=await sb.from('notifications').update({read_at:new Date().toISOString()}).eq('id',id).eq('recipient_id',me.id);if(error)console.warn('Aggiornamento lettura notifica:',error);else n.read_at=new Date().toISOString()}
  page='notifications';render();
- if(n.match_id)vuShowNotificationMatch(matches.find(x=>x.id===n.match_id),n);
+ if(n.match_id)vuShowNotificationMatch(matches.find(x=>x.id===n.match_id),n,playerId);
 }
 
 async function vuOpenPlayerRequestFromNotification(id){
@@ -397,10 +399,21 @@ const vuStyles=`<style id="vu-nav-style">.vu-confirm-summary{display:grid;grid-t
 function vuBindPasswordVisibility(){
  document.querySelectorAll('#loginform input[type="password"]').forEach(input=>{
   input.autocomplete=input.id==='password'?'current-password':'new-password';
-  const button=document.createElement('button');button.type='button';button.className='btn alt sm';
-  button.textContent='MOSTRA PASSWORD';button.setAttribute('aria-controls',input.id);button.setAttribute('aria-pressed','false');
-  button.onclick=()=>{const visible=input.type==='password';input.type=visible?'text':'password';button.textContent=visible?'NASCONDI PASSWORD':'MOSTRA PASSWORD';button.setAttribute('aria-pressed',String(visible))};
-  input.insertAdjacentElement('afterend',button);
+  const control=document.createElement('div');
+  control.className='vu-password-control';
+  input.replaceWith(control);
+  const button=document.createElement('button');
+  button.type='button';button.className='vu-password-toggle';
+  button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/><path class="vu-eye-slash" d="m3 3 18 18"/></svg>';
+  button.setAttribute('aria-controls',input.id);
+  button.setAttribute('aria-label','Mostra '+input.labels[0].textContent.toLowerCase());
+  button.setAttribute('aria-pressed','false');
+  button.onclick=()=>{
+   const visible=input.type==='password';
+   input.type=visible?'text':'password';
+   button.setAttribute('aria-pressed',String(visible));
+  };
+  control.append(input,button);
  });
 }
 function login(force=false){app.innerHTML=`<main class="login"><div class="loginbox"><img src="logo.png" alt="Volla United"><h1>VOLLA UNITED</h1><p class="sub">${force?'PRIMO ACCESSO · CAMBIO PASSWORD':'ACCESSO MISTER, GENITORI E ADMIN'}</p><form id="loginform" class="stack">${force?`<p class="muted">Devi scegliere una password personale prima di continuare.</p>${field('newpass','Nuova password','','password')}${field('confirm','Conferma password','','password')}`:`${field('username','Nome utente',rememberedUsername())}${field('password','Password','','password')}<label style="display:flex;align-items:center;gap:10px;font-size:15px;cursor:pointer"><input type="checkbox" id="remember-login" style="width:20px;height:20px;flex:none" ${rememberedUsername()?'checked':''}> Ricorda nome utente</label>`}<button class="btn">${force?'Salva password e accedi':'Accedi →'}</button></form><div id="autherror" class="error"></div>${!configured?'<p class="error">Configurazione Supabase mancante. Consulta README.md.</p>':''}</div></main>`;
@@ -472,11 +485,12 @@ function vuDashHome(){
  const weekAttendance=attendance.filter(x=>sessionIds.has(x.session_id));
  const weekPct=weekAttendance.length?Math.round(100*weekAttendance.filter(x=>x.present).length/weekAttendance.length):null;
  const weekMatches=normal.filter(m=>m.match_date>=weekKey&&m.match_date<=today);
- const quick=[['matches','📋','NUOVA CONVOCAZIONE'],['callhistory','🗂️','CONVOCAZIONI'],['attendance','✅','PRESENZE'],['history','🏆','RISULTATI'],['players','👥','CALCIATORI'],...(admin?[['profile','🪪','PROFILI']]:[]),...(admin?[['admin','⚙️','AMMINISTRAZIONE']]:[])];
+ const quick=[['attendance','✅','REGISTRA PRESENZE'],['matches','📋','NUOVA CONVOCAZIONE'],['callhistory','🗂️','CONVOCAZIONI'],['history','🏆','RISULTATI'],['players','👥','CALCIATORI'],...(admin?[['profile','🪪','PROFILI']]:[]),...(admin?[['admin','⚙️','AMMINISTRAZIONE']]:[])];
  const next=upcoming[0];
  const catName=id=>upper(cats.find(c=>c.id===id)?.name||'CATEGORIA');
  return `<div class="vu-dash">
  <section class="vu-dash-hero"><div class="vu-dash-eyebrow">VOLLA UNITED ACADEMY · ${admin?'ACADEMY CONTROL CENTER':'COACH CENTER'}</div><div class="vu-dash-hero-row"><img src="logo.png" alt="Volla United"><div><div class="vu-dash-welcome">BENVENUTO, ${admin?'ADMIN':'MISTER'}</div><h1>${esc(upper(me.full_name||''))}</h1><div class="vu-dash-caption">${admin?'PANORAMICA GENERALE DELLA SOCIETÀ':'LA TUA SQUADRA. IL TUO CENTRO OPERATIVO.'}</div></div></div></section>
+ <div class="vu-dash-heading"><h2>⚡ ACCESSO RAPIDO</h2></div><div class="vu-dash-actions">${quick.map(([p,i,t])=>`<button data-page="${p}"><span>${i}</span><b>${t}</b></button>`).join('')}</div>
  <div class="vu-dash-heading"><h2>📊 ${admin?'ACADEMY IN NUMERI':'LA TUA SQUADRA'}</h2><span>DATI REALI</span></div>
  <div class="vu-dash-stats">
  ${[[registered,'CALCIATORI','👥','players'],[normal.length,'PARTITE DISPUTATE','🏟️','matches'],[wins,'VITTORIE','🏆','wins'],[weekPct===null?'—':weekPct+'%','PRESENZE SETTIMANA','📈','attendance']].map(([n,t,i,k])=>`<button type="button" class="vu-dash-stat" data-dash-detail="${k}" aria-label="Apri dettaglio ${t}"><span>${i} ${t}</span><strong>${n}</strong><small>TOCCA PER I DETTAGLI ›</small></button>`).join('')}
@@ -486,7 +500,7 @@ function vuDashHome(){
  ${admin?vuPlayerApprovalPanel():''}
  <div class="vu-dash-heading"><h2>⚽ PROSSIMO IMPEGNO</h2><span>${upcoming.length} IN PROGRAMMA</span></div>
  ${next?`<section class="vu-dash-feature"><div class="vu-dash-tag">${esc(catName(next.category_id))} · ${esc(upper(next.match_type||'PARTITA'))}</div><div class="vu-dash-opponent">${esc(upper(isTournament(next)?next.tournament_name||'TORNEO':next.opponent||'AVVERSARIO DA DEFINIRE'))}</div><div class="vu-dash-meta">📅 ${esc(dateIt(next.match_date))} · ⏰ ${esc((next.kick_off_time||'').slice(0,5)||'DA DEFINIRE')}</div><div class="vu-dash-meta">🏟️ ${esc(upper(next.field_name||'CAMPO DA DEFINIRE'))}</div><button class="vu-dash-link" data-page="callhistory">APRI CONVOCAZIONI →</button></section>`:`<section class="vu-dash-feature"><div class="vu-dash-opponent">NESSUNA PARTITA IN PROGRAMMA</div><div class="vu-dash-meta">LE PROSSIME CONVOCAZIONI APPARIRANNO QUI.</div><button class="vu-dash-link" data-page="matches">CREA CONVOCAZIONE →</button></section>`}
- <div class="vu-dash-heading"><h2>⚡ ACCESSO RAPIDO</h2></div><div class="vu-dash-actions">${quick.map(([p,i,t])=>`<button data-page="${p}"><span>${i}</span><b>${t}</b></button>`).join('')}</div>
+
  <div class="vu-dash-heading"><h2>📅 RIEPILOGO SETTIMANALE</h2></div>
  <section class="vu-dash-panel"><div class="vu-dash-trio"><div><strong>${weekMatches.length}</strong><span>PARTITE</span></div><div><strong>${weekMatches.filter(m=>!isTournament(m)&&vuDashScore(m)[0]>vuDashScore(m)[1]).length}</strong><span>VITTORIE</span></div><div><strong>${weekSessions.length}</strong><span>ALLENAMENTI</span></div></div><div class="vu-dash-footnote">${weekPct===null?'NESSUNA PRESENZA REGISTRATA QUESTA SETTIMANA':'PRESENZA MEDIA REGISTRATA: '+weekPct+'%'}</div></section>
  <div class="vu-dash-heading"><h2>🏟️ ULTIMI RISULTATI</h2></div><section class="vu-dash-panel">${normal.slice(0,4).map(m=>`<div class="vu-dash-result"><div><strong>${esc(upper(vuAtHome(m)?'VOLLA UNITED – '+(m.opponent||'AVVERSARIO'):(m.opponent||'AVVERSARIO')+' – VOLLA UNITED'))}</strong><small>${esc(catName(m.category_id))} · ${esc(dateIt(m.match_date))}</small></div><b>${esc((vuAtHome(m)?vuDashScore(m):[...vuDashScore(m)].reverse()).join(' – '))}</b></div>`).join('')||'<div class="vu-dash-empty">NESSUN RISULTATO ANCORA REGISTRATO</div>'}<button class="vu-dash-link" data-page="history">VEDI STORICO COMPLETO →</button></section>
@@ -1293,10 +1307,14 @@ function bindProfile(){
 }
 function wireProfileResults(){document.querySelectorAll('[data-profile-player]').forEach(b=>b.onclick=()=>{profilePlayerId=b.dataset.profilePlayer;profileSearch='';render();document.querySelector('#profile-detail')?.scrollIntoView({behavior:'smooth',block:'start'})})}
 
+function vuIsUpcomingCallup(m,playerId,today){
+ return m.player_ids?.includes(playerId)&&m.status!=='completed'&&m.match_date>=today;
+}
 function familyPage(){
  const p=players.find(x=>x.id===activeChild);
  if(!p)return `<section class="panel"><h2>👨‍👩‍👧‍👦 Area famiglie</h2><p>Nessun bambino associato a questo account. Contatta l'amministratore.</p></section>`;
- return `${vuProfilePhotoCss}${vuPushActivation()}<h2>👨‍👩‍👧‍👦 I miei figli</h2>${players.length>1?`<div class="field"><label>Seleziona bambino</label><select id="child-select">${players.map(x=>`<option value="${x.id}" ${x.id===p.id?'selected':''}>${esc(x.first_name+' '+x.last_name)}</option>`).join('')}</select></div>`:''}${playerFamilyContent(p)}`;
+ const hasCallup=matches.some(m=>vuIsUpcomingCallup(m,p.id,vuDashToday()));
+ return `${vuProfilePhotoCss}${hasCallup?'':vuPushActivation()}<h2>👨‍👩‍👧‍👦 I miei figli</h2>${players.length>1?`<div class="field"><label>Seleziona bambino</label><select id="child-select">${players.map(x=>`<option value="${x.id}" ${x.id===p.id?'selected':''}>${esc(x.first_name+' '+x.last_name)}</option>`).join('')}</select></div>`:''}${playerFamilyContent(p)}`;
 }
 // Riepilogo della stagione sportiva: dal 1 settembre al 31 agosto.
 function vuSeasonSummary(p){
@@ -1446,14 +1464,16 @@ async function vuDownloadPlayerPhoto(playerId,button){
 }
 function playerFamilyContent(p,staffView=false){
  const now=new Date().toLocaleDateString('en-CA');
- const childMatches=matches.filter(m=>m.player_ids?.includes(p.id)).sort((a,b)=>a.match_date.localeCompare(b.match_date));
- const upcoming=childMatches.filter(m=>m.status!=='completed'&&m.match_date>=now),past=childMatches.filter(m=>m.status==='completed'&&m.played_ids?.includes(p.id)).reverse();
+ const childMatches=matches.filter(m=>m.player_ids?.includes(p.id)).sort((a,b)=>a.match_date.localeCompare(b.match_date)||String(a.meeting_time||a.kick_off_time||'99:99').localeCompare(String(b.meeting_time||b.kick_off_time||'99:99')));
+ const upcoming=childMatches.filter(m=>vuIsUpcomingCallup(m,p.id,now)),past=childMatches.filter(m=>m.status==='completed'&&m.played_ids?.includes(p.id)).reverse();
  const goalHistory=past.map(m=>({m,goals:matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0})).filter(x=>x.goals>0);
  const goalHistoryHtml=`<section class="panel"><h3>⚽ Storico gol</h3>${goalHistory.map(({m,goals})=>`<div class="item row"><div><strong>${esc(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||m.match_type)}</strong><small>${esc(dateIt(m.match_date))} · ${esc(m.match_type)}${isTournament(m)&&m.tournament_position?' · '+esc(vuTournamentPlace(m)):''}</small></div><strong>${goals} ${goals===1?'gol':'gol'}</strong></div>`).join('')||'<p class="muted">Nessun gol registrato.</p>'}</section>`;
  const trainings=sessions.filter(s=>s.category_id===p.category_id).sort((a,b)=>b.training_date.localeCompare(a.training_date));
  const records=trainings.map(s=>({s,a:attendance.find(a=>a.session_id===s.id&&a.player_id===p.id)})).filter(x=>x.a);
  const present=records.filter(x=>x.a.present).length;
- return `${vuProfilePhotoCss}${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0,present)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section><section class="panel"><h3>📅 Prossime convocazioni</h3>${upcoming.map(m=>`<div class="item" data-family-match-id="${esc(m.id)}"><strong>${esc(m.opponent)} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Appuntamento ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small>${fieldDirections(m)}${!staffView?(!vuResponsesLoaded?`<div class="vu-response-locked">⏳ VERIFICA CONFERME NON DISPONIBILE · AGGIORNA LA PAGINA</div>`:vuResponseFor(m.id,p.id)==='none'?`<div class="actions" style="margin-top:10px"><button type="button" class="btn sm" data-callup-response="present" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>✅ PRESENTE</button><button type="button" class="btn alt sm" data-callup-response="absent" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>❌ ASSENTE</button></div><small>⏳ IN ATTESA</small>`:`<div class="vu-response-locked" style="margin-top:12px;padding:12px;border-radius:12px;border:1px solid #8e5265;background:#351d2b;font-weight:800">${vuResponseLabel(vuResponseFor(m.id,p.id))}</div>`):''}</div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section><section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
+ const callups=`<section class="panel vu-family-callups"><h3>📅 Prossime convocazioni</h3>${upcoming.map((m,index)=>`<div class="item${index===0?' vu-family-next':''}" data-family-match-id="${esc(m.id)}">${index===0?'<small class="vu-family-next-label">PROSSIMA CONVOCAZIONE</small>':''}<strong>${esc(isTournament(m)?m.tournament_name||'TORNEO':m.opponent||'PARTITA')} · ${esc(dateIt(m.match_date))}</strong><small>${esc(m.field_name||'')} · Raduno ${esc((m.meeting_time||'').slice(0,5))} · Inizio ${esc((m.kick_off_time||'').slice(0,5))}</small>${fieldDirections(m,'📍 APRI MAPPA')}${!staffView?(!vuResponsesLoaded?`<div class="vu-response-locked">⏳ VERIFICA CONFERME NON DISPONIBILE · AGGIORNA LA PAGINA</div>`:vuResponseFor(m.id,p.id)==='none'?`<div class="actions" style="margin-top:10px"><button type="button" class="btn sm" data-callup-response="present" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>✅ PRESENTE</button><button type="button" class="btn alt sm" data-callup-response="absent" data-match-id="${m.id}" data-player-id="${p.id}" ${vuResponseSaving?'disabled':''}>❌ ASSENTE</button></div><small>⏳ IN ATTESA</small>`:`<div class="vu-response-locked" style="margin-top:12px;padding:12px;border-radius:12px;border:1px solid #8e5265;background:#351d2b;font-weight:800">${vuResponseLabel(vuResponseFor(m.id,p.id))}</div>`):''}</div>`).join('')||'<p class="muted">Nessuna convocazione futura.</p>'}</section>`;
+ const highlightCallups=!staffView&&upcoming.length>0;
+ return `${vuProfilePhotoCss}${highlightCallups?callups+vuPushActivation():''}${vuLuxuryHero(p,past.length,past.reduce((n,m)=>n+(matchScorersFor(m).find(x=>x.player_id===p.id)?.goals||0),0),records.length?Math.round(present/records.length*100):0,present)}${vuSeasonSummary(p)}<section class="panel"><h3>🏃 Allenamenti</h3><p><strong>${present} presenze su ${records.length} registrazioni · ${records.length?Math.round(present/records.length*100):0}%</strong></p>${records.slice(0,5).map(x=>`<div class="item row"><span>${esc(dateIt(x.s.training_date))}</span><strong>${x.a.present?'✅ Presente':'❌ Assente'}</strong></div>`).join('')||'<p class="muted">Nessun allenamento registrato.</p>'}</section>${highlightCallups?'':callups}<section class="panel"><h3>🏟 Ultime partite</h3>${past.slice(0,5).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="muted">Nessuna convocazione precedente.</p>'}</section>${goalHistoryHtml}<div id="profile-match-detail"></div>`;
 }
 function bindFamily(){document.querySelectorAll('[data-callup-response]').forEach(b=>b.onclick=()=>vuSetCallupResponse(b.dataset.matchId,b.dataset.playerId,b.dataset.callupResponse)); $('#child-select')?.addEventListener('change',e=>{activeChild=e.target.value;render()}) }
 function parentChildPicker(prefix, selectedIds=[]){

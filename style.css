@@ -41,3 +41,22 @@ html,body{width:100%;max-width:100%;overflow-x:clip}
 .fields>*{min-width:0;max-width:100%}
 input,select,textarea{max-width:100%;font-size:16px}
 @media(max-width:600px){#matchform .fields{grid-template-columns:minmax(0,1fr)}#matchform .field{min-width:0}}
+
+.vu-password-control { position: relative; }
+.vu-password-control input { width: 100%; padding-right: 52px; }
+.vu-password-toggle {
+  position: absolute;
+  inset: 0 2px 0 auto;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.vu-password-toggle svg { width: 22px; height: 22px; }
+.vu-password-toggle[aria-pressed="false"] .vu-eye-slash { display: none; }
+.vu-family-callups .vu-family-next { border: 1px solid #a94761; padding: 14px; }
+.vu-family-next .vu-family-next-label { color: #ffc0d0; font-weight: 800; margin-bottom: 6px; }
