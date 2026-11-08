@@ -440,17 +440,55 @@ function vuExtraButton(host, label, action){
   };
   host.append(button);
 }
+async function vuRegisterPasskey(){
+  const {error}=await sb.auth.registerPasskey();
+  if(error)throw Error('Attivazione passkey non riuscita: '+error.message);
+  toast('Passkey registrata');
+}
 function vuBindDeviceOptions(){
   const menu=$('.vu-account-menu');
-  if(!menu)return;
-  if(window.PublicKeyCredential && sb.auth.registerPasskey)vuExtraButton(menu,'Attiva Face ID / impronta',async()=>{
-    const {error}=await sb.auth.registerPasskey();
-    if(error)throw Error('Attivazione passkey non riuscita: '+error.message);
-    toast('Passkey registrata');
-  });
+  if(menu && window.PublicKeyCredential && sb.auth.registerPasskey){
+    vuExtraButton(menu,'Attiva Face ID / impronta',vuRegisterPasskey);
+  }
+}
+const vuPasskeyOffers=new Set();
+async function vuOfferPasskey(){
+  const userId=me?.id;
+  if(!userId || !window.PublicKeyCredential || !sb.auth.passkey?.list ||
+     !sb.auth.registerPasskey || vuPasskeyOffers.has(userId))return;
+  const key='vu-passkey-offer:'+userId;
+  try{if(localStorage.getItem(key))return}catch{}
+  vuPasskeyOffers.add(userId);
+  try{
+    if(!await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())return;
+    const {data,error}=await sb.auth.passkey.list();
+    if(error || !Array.isArray(data) || data.length || me?.id!==userId || me.must_change_password)return;
+    const method=/iPhone|iPad/.test(navigator.userAgent)?'Face ID':
+      /Android/.test(navigator.userAgent)?'impronta':'passkey';
+    const dialog=document.createElement('dialog');
+    dialog.className='panel';
+    dialog.setAttribute('aria-labelledby','vu-passkey-title');
+    dialog.innerHTML=`<h2 id="vu-passkey-title">Attiva ${method}</h2>
+      <p>Usa lo sblocco del dispositivo per accedere più velocemente. Puoi continuare a usare la password.</p>
+      <div class="actions"></div>`;
+    const actions=dialog.querySelector('.actions');
+    const close=()=>dialog.close();
+    dialog.addEventListener('close',()=>{
+      try{localStorage.setItem(key,'1')}catch{}
+      dialog.remove();
+    },{once:true});
+    vuExtraButton(actions,'Non ora',close);
+    vuExtraButton(actions,'Attiva',async()=>{
+      if(me?.id!==userId){close();return}
+      await vuRegisterPasskey();
+      close();
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+  }catch(error){console.warn('Invito passkey non disponibile',error)}
 }
 async function query(table,cols='*'){const {data,error}=await sb.from(table).select(cols);if(error)throw error;return data||[]}
-async function load(){try{const {data:{user}}=await sb.auth.getUser();if(!user){me=null;login();return}const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error)throw error;me=data;if(!me.active){await sb.auth.signOut();me=null;login();toast('Account disattivato: contatta l’amministratore');return}if(me.must_change_password){page='home';login(true);return}const [newCats,newAccess,newPlayers,newMatches,newScorers,mp]=await Promise.all([query('categories'),me.role==='parent'?Promise.resolve([]):query('coach_categories'),query('players'),query('matches'),query('match_scorers'),query('match_players')]);cats=newCats;access=newAccess;players=newPlayers;matches=newMatches;matchScorers=newScorers;await Promise.all([loadPlayingFields(),loadTournamentNames()]);matches.forEach(m=>{const rows=mp.filter(x=>x.match_id===m.id).sort((a,b)=>a.sort_order-b.sort_order);m.player_ids=rows.map(x=>x.player_id);m.played_ids=rows.filter(x=>x.played).map(x=>x.player_id)});const [newUsers,newStaff]=await Promise.all([me.role==='admin'?query('profiles'):Promise.resolve([]),me.role==='parent'?Promise.resolve([]):sb.rpc('vu_category_staff').then(({data,error})=>{if(error)throw error;return data||[]}),vuLoadPlayerRequests(),me.role!=='parent'?loadPlayerDetails():Promise.resolve(),loadAttendance(),loadFamilyData(),me.role==='parent'?loadParentMatchDetails():Promise.resolve(),vuLoadNotifications(),vuLoadCallupResponses(),vuLoadFilters(),vuCheckPush(),me.role!=='parent'?loadOpponents():Promise.resolve()]);users=newUsers;vuCategoryStaff=newStaff;if(me.role==='parent')playerDetails=[];if(!permitted().includes(currentCat))currentCat=permitted()[0]||'';if(me.role==='parent'){if(page!=='notifications')page='family';if(!players.some(p=>p.id===activeChild))activeChild=players[0]?.id||''}render();await vuOpenRequestedMatch();const requestedPlayer=new URLSearchParams(location.search).get('player');if(requestedPlayer&&/^[0-9a-f-]{36}$/i.test(requestedPlayer)){const p=players.find(x=>x.id===requestedPlayer);if(p){if(me.role==='parent'){activeChild=p.id;page='family';render()}else if((me.role==='admin'||me.role==='coach')&&permitted().includes(p.category_id)){profilePlayerId=p.id;page='profile';render()}else toast('Profilo non autorizzato')}else toast('Profilo non disponibile per questo account');const u=new URL(location.href);u.searchParams.delete('player');history.replaceState(null,'',u.pathname+u.search+u.hash)}return true}catch(e){toast(e.message);console.error(e);return false}}
+async function load(){try{const {data:{user}}=await sb.auth.getUser();if(!user){me=null;login();return}const {data,error}=await sb.from('profiles').select('*').eq('id',user.id).single();if(error)throw error;me=data;if(!me.active){await sb.auth.signOut();me=null;login();toast('Account disattivato: contatta l’amministratore');return}if(me.must_change_password){page='home';login(true);return}const [newCats,newAccess,newPlayers,newMatches,newScorers,mp]=await Promise.all([query('categories'),me.role==='parent'?Promise.resolve([]):query('coach_categories'),query('players'),query('matches'),query('match_scorers'),query('match_players')]);cats=newCats;access=newAccess;players=newPlayers;matches=newMatches;matchScorers=newScorers;await Promise.all([loadPlayingFields(),loadTournamentNames()]);matches.forEach(m=>{const rows=mp.filter(x=>x.match_id===m.id).sort((a,b)=>a.sort_order-b.sort_order);m.player_ids=rows.map(x=>x.player_id);m.played_ids=rows.filter(x=>x.played).map(x=>x.player_id)});const [newUsers,newStaff]=await Promise.all([me.role==='admin'?query('profiles'):Promise.resolve([]),me.role==='parent'?Promise.resolve([]):sb.rpc('vu_category_staff').then(({data,error})=>{if(error)throw error;return data||[]}),vuLoadPlayerRequests(),me.role!=='parent'?loadPlayerDetails():Promise.resolve(),loadAttendance(),loadFamilyData(),me.role==='parent'?loadParentMatchDetails():Promise.resolve(),vuLoadNotifications(),vuLoadCallupResponses(),vuLoadFilters(),vuCheckPush(),me.role!=='parent'?loadOpponents():Promise.resolve()]);users=newUsers;vuCategoryStaff=newStaff;if(me.role==='parent')playerDetails=[];if(!permitted().includes(currentCat))currentCat=permitted()[0]||'';if(me.role==='parent'){if(page!=='notifications')page='family';if(!players.some(p=>p.id===activeChild))activeChild=players[0]?.id||''}render();await vuOpenRequestedMatch();const requestedPlayer=new URLSearchParams(location.search).get('player');if(requestedPlayer&&/^[0-9a-f-]{36}$/i.test(requestedPlayer)){const p=players.find(x=>x.id===requestedPlayer);if(p){if(me.role==='parent'){activeChild=p.id;page='family';render()}else if((me.role==='admin'||me.role==='coach')&&permitted().includes(p.category_id)){profilePlayerId=p.id;page='profile';render()}else toast('Profilo non autorizzato')}else toast('Profilo non disponibile per questo account');const u=new URL(location.href);u.searchParams.delete('player');history.replaceState(null,'',u.pathname+u.search+u.hash)}void vuOfferPasskey();return true}catch(e){toast(e.message);console.error(e);return false}}
 // Pull to Refresh disponibile in tutte le sezioni e per tutti i ruoli.
 // Protegge le modifiche non salvate senza bloccare intere pagine.
 let vuRefreshing=false,vuPullStart=null,vuPullDistance=0,vuFormDirty=false;
