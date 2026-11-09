@@ -1023,10 +1023,13 @@ async function save(table,obj,id){let q=id?sb.from(table).update(obj).eq('id',id
 async function adminCall(body){const {data:{session}}=await sb.auth.getSession();const r=await fetch(`${SUPABASE_URL}/functions/v1/manage-users`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.access_token}`,apikey:SUPABASE_ANON_KEY},body:JSON.stringify(body)});const x=await r.json();if(!r.ok)throw Error(x.error||'Operazione non riuscita');return x}
 
 const fmtItalian=d=>d?d.split('-').reverse().join('/') : '';
+function usesRegionalDistinta(m){
+ return /^(2010|2011|2012|2013) REGIONALI$/.test(upper(cats.find(c=>c.id===m.category_id)?.name||'').trim());
+}
 function distintaForm(m){
  const values={heading:'VOLLA UNITED - '+(m.opponent||''),competition:m.match_type||'',place:m.field_name||'',date:m.match_date||'',time:(m.kick_off_time||'').slice(0,5),assistant:'',assistant_doc:'',accompanying:m.dirigente_text||'',accompanying_doc:'',referee_officer:'',referee_officer_doc:'',coach:matchCoachName(m)==='Non indicato'?'':matchCoachName(m),coach_doc:'',doctor:'',doctor_doc:'',masseur:'',masseur_doc:''};
  const f=(id,label,type='text')=>`<div class="field"><label>${label}</label><input id="df-${id}" type="${type}" value="${esc(values[id]||'')}"></div>`;
- const staff=[['assistant','Assistente arbitro'],['accompanying','Dirigente accompagnatore'],['referee_officer','Dirigente addetto arbitro'],['coach','Allenatore'],['doctor','Medico sociale'],['masseur','Massaggiatore']];
+ const staff=[['assistant','Assistente arbitro'],['accompanying','Dirigente accompagnatore'],['referee_officer','Dirigente addetto arbitro'],['coach','Allenatore'],['doctor',usesRegionalDistinta(m)?'Allenatore in seconda':'Medico sociale'],['masseur','Massaggiatore']];
   const convocati=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean);
   const documenti=`<h3>Documenti dei convocati</h3><p class="muted">C.I. e matricola FIGC sono precaricate dalla scheda del calciatore. Puoi correggerle per questa distinta senza modificare l'archivio.</p><div class="stack">${convocati.map(p=>{const d=detailOf(p.id);return `<div class="item"><strong>${esc(fullName(p))}</strong><div class="fields">${field('df-ci-'+p.id,'Carta identità (C.I.)',d.identity_number||'')}${field('df-figc-'+p.id,'Matricola FIGC',d.figc_number||'')}</div></div>`}).join('')}</div>`;
  return `<section class="panel" id="distinta-panel"><h2>📄 Distinta Gara · ${esc(m.opponent||'')}</h2><p class="muted">I campi sono modificabili. Il PDF riproduce il modello ufficiale caricato.</p><div class="fields">${f('heading','Distinta Giocatori partecipanti alla gara')}${f('competition','Campionato')}${f('place','Da disputare a')}${f('date','Il','date')}${f('time','Alle ore','time')}</div>${documenti}<h3>Staff (facoltativo)</h3><div class="fields">${staff.map(([k,label])=>f(k,label)+f(k+'_doc','Documento e/o tessera FIGC n°')).join('')}</div><div class="actions"><button type="button" class="btn" id="create-distinta">📄 Genera PDF distinta</button><button type="button" class="btn alt" id="close-distinta">Chiudi</button></div><p class="muted">C.I. e matricola vengono recuperate dalle schede calciatori.</p></section>`;
@@ -1043,8 +1046,10 @@ async function generateDistinta(m){
  const btn=$('#create-distinta');if(btn)btn.disabled=true;
  try{
  const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
- const response=await fetch('./distinta-template.pdf',{cache:'no-store'});
- if(!response.ok)throw Error('Carica distinta-template.pdf nella stessa cartella di app.js su GitHub');
+ const regional=usesRegionalDistinta(m);
+ const template=regional?'distinta-regionali.pdf':'distinta-template.pdf';
+ const response=await fetch('./'+template,{cache:'no-store'});
+ if(!response.ok)throw Error('Modello distinta non disponibile: '+template);
  const pdf=await PDFDocument.load(await response.arrayBuffer());const page=pdf.getPages()[0];
  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=page.getWidth(),H=page.getHeight();
@@ -1059,7 +1064,9 @@ async function generateDistinta(m){
  };
  const value=k=>val('df-'+k);
  // Il titolo libero viene inserito nello spazio già previsto, senza coprire la tabella.
- if(value('heading')){
+ if(regional){
+   write(value('heading'),274,144,8.5,282,true);
+ }else if(value('heading')){
    page.drawRectangle({x:34*sx,y:H-148*sy,width:527*sx,height:16*sy,color:rgb(1,1,1)});
    write('Distinta Giocatori partecipanti alla gara: '+value('heading'),36,144,8.5,520,true);
  }
