@@ -815,26 +815,18 @@ function openResult(m){const host=$('#historydetail');if(!host)return;host.inner
 
 function formatMessage(m){const dt=new Date(m.match_date+'T12:00:00');const date=isNaN(+dt)?m.match_date:dt.toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).toUpperCase();const names=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean).sort(sortPlayers);return`ⒸⓄⓃⓋⓄⒸⒶⓏⒾⓄⓃⒺ\n\n⚽️ 𝚃𝙸𝙿𝙾𝙻𝙾𝙶𝙸𝙰 𝙶𝙰𝚁𝙰: ${m.match_type}\n🏟 𝙲𝙰𝙼𝙿𝙾 𝙳𝙰 𝙶𝙸𝙾𝙲𝙾: ${m.field_name}\n${fieldShortLink(m)?'📍 POSIZIONE: '+fieldShortLink(m)+'\n':''}🗓 𝙳𝙰𝚃A: ${date}\n${isTournament(m)?'🏆 TORNEO: '+m.tournament_name:( '🥅 𝙰𝚅𝚅𝙴𝚁𝚂𝙰𝚁𝙸𝙾: '+m.opponent)}\n⏱ 𝙾𝚛𝚊 𝚌𝚘𝚗𝚟𝚘𝚌𝚊𝚣𝚒𝚘𝚗𝚎: ${(m.meeting_time||'').slice(0,5).replace(':',',')}\n⏱ inizio partita : ${(m.kick_off_time||'').slice(0,5).replace(':',',')}\n🎽 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚘 𝚐𝚊𝚛𝚊:\n𝑴𝒂𝒈𝒍𝒊𝒂 𝐆𝐀𝐑𝐀  ${m.jersey_color}\n𝑷𝒂𝒏𝒕𝒂𝒍𝒐𝒏𝒄𝒊𝒏𝒊 ${m.shorts_color}\n𝑪𝒂𝒍𝒛𝒆𝒓𝒐𝒕𝒕𝒊 ${m.socks_color}\n⚠️ 𝐀𝐓𝐓𝐄𝐍𝐙𝐈𝐎𝐍𝐄\n${m.notice}\nℂ𝕆ℕ𝕍𝕆ℂ𝔸𝕋𝕀\n${names.map((p,i)=>`${i+1}. ${upper(p.last_name)} ${upper(p.first_name)}`).join('\n')}\n🖋 𝙼𝚒𝚜𝚝𝚎𝚛\n${m.coaches_text}\n#𝚠𝚎𝙻⚽️𝚟𝚎 VOLLAUNITED🔥`}
 function preview(m,target){
-  const area=$(target);if(!area)return;
-  const message=formatMessage(m);
-  area.innerHTML=`<section class="panel"><h3>Messaggio WhatsApp</h3><p class="muted">Copia la convocazione completa, poi apri il gruppo WhatsApp e incollala nella chat.</p><div class="preview" style="user-select:text;-webkit-user-select:text;white-space:pre-wrap">${esc(message)}</div><div class="actions"><button class="btn" type="button" data-copy-callup>📋 Copia convocazione completa</button></div></section>`;
-  area.querySelector('[data-copy-callup]').onclick=()=>copyMessage(message);
-  area.scrollIntoView({behavior:'smooth',block:'start'});
+ const area=$(target);if(!area)return;
+ const message=formatMessage(m);
+ area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview" style="white-space:pre-wrap">${esc(message)}</div><div class="actions"><button class="btn" type="button" data-share-callup>🟢 Condividi WhatsApp</button></div></section>`;
+ area.querySelector('[data-share-callup]').onclick=()=>shareCallupWhatsApp(message);
+ area.scrollIntoView({behavior:'smooth',block:'start'});
 }
-async function copyMessage(message){
-  if(!message)return toast('Nessun messaggio da copiare');
-  try{
-    if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(message);toast('Messaggio copiato');return}
-  }catch(e){console.warn('Clipboard API:',e)}
-  const el=document.createElement('textarea');el.value=message;el.readOnly=true;
-  el.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-  document.body.appendChild(el);el.focus();el.select();el.setSelectionRange(0,el.value.length);
-  let ok=false;try{ok=document.execCommand('copy')}catch{}el.remove();
-  if(ok){toast('Messaggio copiato');return}
-  // Ultima possibilità su iOS: mostra il testo selezionabile.
-  const area=document.querySelector('#historydetail .preview, #previewarea .preview');
-  if(area){area.style.userSelect='text';area.style.webkitUserSelect='text'}
-  toast('Copia non disponibile: tieni premuto sul testo per copiarlo');
+function shareCallupWhatsApp(message){
+ if(!message)return toast('Nessun messaggio da condividere');
+ const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
+   (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+ const target=mobile?'whatsapp://send?text=':'https://web.whatsapp.com/send?text=';
+ window.location.href=target+encodeURIComponent(message);
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
@@ -1163,7 +1155,7 @@ if(savedMatch){
  if(host){
   host.innerHTML=`<section class="panel"><h3>✅ Convocazione salvata</h3><p>${esc(savedMatch.opponent)} · ${esc(dateIt(savedMatch.match_date))}</p><div class="actions"><button type="button" class="btn" id="saved-distinta">📄 Crea distinta PDF</button><button type="button" class="btn alt" id="saved-whatsapp">🟢 Condividi WhatsApp</button></div></section>`;
   $('#saved-distinta').onclick=()=>openDistinta(savedMatch);
-  $('#saved-whatsapp').onclick=()=>preview(savedMatch,'#historydetail');
+  $('#saved-whatsapp').onclick=()=>shareCallupWhatsApp(formatMessage(savedMatch));
   host.scrollIntoView({behavior:'smooth',block:'start'});
  }
 }
@@ -1198,7 +1190,7 @@ if(action==='share-match'){
  const m=matches.find(x=>x.id===id);
  if(!m)throw Error('Convocazione non trovata');
  if(!allowed(m.category_id,'view'))throw Error('Non autorizzato');
- preview(m,'#historydetail');return;
+ shareCallupWhatsApp(formatMessage(m));return;
 }
 if(action==='export-roster'){await exportRosterPdf();return}if(action==='logout'){await sb.auth.signOut();me=null;page='home';editing=null;draft=null;selected=[];currentCat='';login();return}if(action==='new-player'||action==='edit-player'){if(me?.role==='coach'&&action==='edit-player')throw Error('Modifica riservata all’Admin');let p=players.find(p=>p.id===id);window._editPlayer=p?.id||null;$('#playerform').innerHTML=playerForm(p);bindPlayer();$('#playerform').scrollIntoView({behavior:'smooth'});$('#playerform [data-action="close-player"]').onclick=()=>$('#playerform').innerHTML='';return}if(action==='close-player'){$('#playerform').innerHTML='';return}if(action==='toggle-player-active'){if(me?.role!=='admin')throw Error('Operazione riservata all’amministratore');const p=players.find(x=>x.id===id);if(!p)throw Error('Calciatore non trovato');const next=p.active===false;if(!confirm((next?'Riattivare ':'Disattivare ')+fullName(p)+'? Lo storico verrà conservato.'))return;const r=await sb.rpc('vu_admin_set_player_active',{p_player_id:id,p_active:next});if(r.error)throw r.error;await load();render();toast(next?'Calciatore riattivato':'Calciatore disattivato');return}
 if(action==='delete-player'){const p=players.find(x=>x.id===id);if(!p)throw Error('Calciatore non trovato');if(me?.role==='coach'){if(!permitted().includes(p.category_id))throw Error('Calciatore non autorizzato');if(!confirm('Inviare richiesta di rimozione di '+fullName(p)+' all’Admin?'))return;const r=await sb.rpc('submit_player_request',{p_category_id:p.category_id,p_request_type:'remove',p_player_id:p.id,p_player_data:{}});if(r.error)throw r.error;await vuLoadPlayerRequests();toast('Richiesta di rimozione inviata');return;}if(me?.role!=='admin')throw Error('Eliminazione riservata all’amministratore');const name=fullName(p);const category=cats.find(c=>c.id===p.category_id)?.name||'';if(!confirm('ELIMINAZIONE DEFINITIVA\\n'+name+' — '+category+'\\nSaranno cancellati anche convocazioni, presenze, statistiche e collegamenti personali. Continuare?'))return;const typed=prompt('ULTIMA CONFERMA: scrivi ELIMINA per cancellare definitivamente '+name);if(typed!=='ELIMINA'){toast('Eliminazione annullata');return;}const r=await sb.rpc('vu_admin_delete_player',{p_player_id:id});if(r.error)throw r.error;await load();render();toast('Calciatore e dati collegati eliminati');return}
