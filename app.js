@@ -822,11 +822,18 @@ function preview(m,target){
  area.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function shareCallupWhatsApp(message){
- if(!message)return toast('Nessun messaggio da condividere');
- const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
-   (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
- const target=mobile?'https://api.whatsapp.com/send?text=':'https://web.whatsapp.com/send?text=';
- window.location.href=target+encodeURIComponent(message);
+  if(!message||!String(message).trim())return toast('Nessun messaggio da condividere');
+  // Apri direttamente il composer di WhatsApp con l'intero testo, non la
+  // share sheet di iOS: quest'ultima può estrarre e condividere soltanto l'URL.
+  const text=String(message);
+  const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
+    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const encoded=encodeURIComponent(text);
+  if(mobile){
+    window.location.href='whatsapp://send?text='+encoded;
+  }else{
+    window.open('https://web.whatsapp.com/send?text='+encoded,'_blank','noopener');
+  }
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
