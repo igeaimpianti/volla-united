@@ -825,7 +825,7 @@ function shareCallupWhatsApp(message){
  if(!message)return toast('Nessun messaggio da condividere');
  const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
- const target=mobile?'whatsapp://send?text=':'https://web.whatsapp.com/send?text=';
+ const target=mobile?'https://api.whatsapp.com/send?text=':'https://web.whatsapp.com/send?text=';
  window.location.href=target+encodeURIComponent(message);
 }
 function shareWhatsApp(message){
