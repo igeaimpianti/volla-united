@@ -821,15 +821,9 @@ async function copyMessage(message){
   if(area){area.style.userSelect='text';area.style.webkitUserSelect='text'}
   toast('Copia non disponibile: tieni premuto sul testo per copiarlo');
 }
-async function shareWhatsApp(message){
+function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
-  // Passa l'intero testo come payload di condivisione, senza url separato:
-  // iOS/WhatsApp può altrimenti trasformare la condivisione nel solo collegamento.
-  if(navigator.share){
-    try{await navigator.share({text:message});return}
-    catch(e){if(e.name==='AbortError')return;console.warn('Condivisione nativa:',e)}
-  }
-  // Fallback per browser che non supportano Web Share.
+  // Invia tutto il testo direttamente a WhatsApp per preservare anche il link al campo.
   window.location.href='https://wa.me/?text='+encodeURIComponent(message);
 }
 
