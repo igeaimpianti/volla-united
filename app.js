@@ -754,12 +754,13 @@ function vuShowTrainingInfo(id,anchor){
  const p=players.find(p=>p.id===id);if(!p)return;
  document.querySelectorAll('.vu-training-popover').forEach(x=>x.remove());
  const count=vuTrainingCount(id);
+ const week=vuEligibilityScope();const end=week?[week.end,vuRomeToday(),vuEligibilityDate()].sort()[0]:null;const ids=new Set(sessions.filter(x=>week&&x.training_date>=week.start&&x.training_date<=end).map(x=>x.id));const reasons=attendance.filter(a=>a.player_id===id&&a.present===false&&ids.has(a.session_id)).map(a=>{const day=sessions.find(x=>x.id===a.session_id)?.training_date;const labels={salute:'SALUTE',infortunio:'INFORTUNIO',ingiustificato:'INGIUSTIFICATO',altro:'ALTRO'};return (day?dateIt(day)+' · ':'')+(labels[a.absence_reason]||'NON SPECIFICATO')+(a.absence_reason==='altro'&&a.absence_note?' · '+a.absence_note:'')});
  const panel=document.createElement('div');
  panel.className='vu-training-popover';
  panel.setAttribute('role','dialog');
  panel.setAttribute('aria-label','Informazioni convocabilità');
  panel.style.cssText='position:fixed!important;z-index:2147483647!important;box-sizing:border-box;width:min(340px,calc(100vw - 24px));max-height:70dvh;overflow-y:auto;padding:17px;border:1px solid rgba(225,95,120,.45);border-radius:16px;background:rgba(37,20,31,.94);color:#fff;box-shadow:0 12px 36px rgba(0,0,0,.42);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);font-size:14px;line-height:1.45';
- panel.innerHTML=`<strong style="display:block;margin-bottom:9px;font-size:15px">${esc(upper(fullName(p)))}</strong><p style="margin:0 0 8px">${count===null?'PRESENZE AGLI ALLENAMENTI NON DISPONIBILI.':'IL CALCIATORE NON HA RAGGIUNTO IL MINIMO DI 2 ALLENAMENTI.'}</p><p style="margin:0 0 14px;opacity:.8">${count===null?'VERIFICA LE PRESENZE PRIMA DI PROCEDERE.':count+' PRESENZE SU 2 RICHIESTE NELLA SETTIMANA DELLA PARTITA.'}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" data-override style="flex:1 1 auto">CONVOCA UGUALMENTE</button><button type="button" class="btn alt sm" data-close>CHIUDI</button></div>`;
+ panel.innerHTML=`<strong style="display:block;margin-bottom:9px;font-size:15px">${esc(upper(fullName(p)))}</strong><p style="margin:0 0 8px">${count===null?'PRESENZE AGLI ALLENAMENTI NON DISPONIBILI.':'IL CALCIATORE NON HA RAGGIUNTO IL MINIMO DI 2 ALLENAMENTI.'}</p><p style="margin:0 0 14px;opacity:.8">${count===null?'VERIFICA LE PRESENZE PRIMA DI PROCEDERE.':count+' PRESENZE SU 2 RICHIESTE NELLA SETTIMANA DELLA PARTITA.'}</p>${reasons.length?`<div style="margin:0 0 12px"><strong>ASSENZE DELLA SETTIMANA</strong><ul style="padding-left:18px;margin:6px 0">${reasons.map(r=>`<li>${esc(r)}</li>`).join('')}</ul></div>`:'<p style="margin:0 0 12px;opacity:.8">NESSUNA ASSENZA REGISTRATA NELLA SETTIMANA.</p>'}<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" data-override style="flex:1 1 auto">CONVOCA UGUALMENTE</button><button type="button" class="btn alt sm" data-close>CHIUDI</button></div>`;
  const close=()=>{panel.remove();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',escapeKey)};
  const outside=e=>{if(!panel.contains(e.target)&&!e.target.closest?.('[data-training-info]'))close()};
  const escapeKey=e=>{if(e.key==='Escape')close()};
@@ -887,7 +888,7 @@ function attendancePage(){
   const editable=me.role==='admin'||access.some(a=>a.category_id===currentCat);
   return `<h2>✅ Presenze allenamenti</h2>${catSelector()}<section class="panel"><h3>Registro allenamento</h3>${field('training-date','Data allenamento',attendanceDate,'date')}
     <p class="muted">${sess?'Allenamento già registrato: puoi aggiornare le presenze.':'Nuovo allenamento: tutti presenti; deseleziona soltanto gli assenti.'}</p>
-    <div class="stack">${ps.map(p=>`<label class="check" style="display:flex;align-items:center;gap:12px"><input type="checkbox" data-attend="${esc(p.id)}" ${sess?(rows.find(r=>r.player_id===p.id)?.present?'checked':''):'checked'} ${!editable?'disabled':''}><span>${esc(fullName(p))}</span></label>`).join('')||'<p class="empty">Nessun calciatore nella categoria</p>'}</div>
+    <div class="stack">${ps.map(p=>{const rec=rows.find(r=>r.player_id===p.id),isPresent=sess?rec?.present===true:true;return `<div class="item" style="padding:12px"><label class="check" style="display:flex;align-items:center;gap:12px"><input type="checkbox" data-attend="${esc(p.id)}" ${isPresent?'checked':''} ${!editable?'disabled':''}><span>${esc(fullName(p))}</span></label><div data-absence-fields="${esc(p.id)}" style="margin-top:10px;display:${isPresent?'none':'block'}"><label class="field"><span>Motivo assenza</span><select data-absence-reason="${esc(p.id)}" ${!editable?'disabled':''}><option value="">Non specificato (storico)</option>${[['salute','Salute'],['infortunio','Infortunio'],['ingiustificato','Ingiustificato'],['altro','Altro']].map(([v,l])=>`<option value="${v}" ${rec?.absence_reason===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="field" data-absence-note-wrap="${esc(p.id)}" style="display:${rec?.absence_reason==='altro'?'block':'none'};margin-top:8px"><span>Specifica il motivo</span><input data-absence-note="${esc(p.id)}" maxlength="250" value="${esc(rec?.absence_note||'')}" placeholder="Scrivi il motivo" ${!editable?'disabled':''}></label></div></div>`}).join('')||'<p class="empty">Nessun calciatore nella categoria</p>'}</div>
     ${editable?'<div class="actions"><button class="btn" id="save-attendance">💾 Salva presenze</button>'+(sess?'<button class="btn alt" id="delete-attendance-day" type="button">🗑 Elimina questo allenamento</button>':'')+'</div>':''}</section>
     <section class="panel"><h3>Statistiche e PDF</h3><div class="fields">${field('att-from','Dal',from,'date')}${field('att-to','Al',to,'date')}
     <div class="field"><label>Allievo</label><select id="att-player"><option value="">Tutti gli allievi</option>${ps.map(p=>`<option value="${esc(p.id)}" ${attendancePlayer===p.id?'selected':''}>${esc(fullName(p))}</option>`).join('')}</select></div></div>
@@ -934,6 +935,8 @@ function bindAttendance(){
     const local=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     attendanceFrom=local(start);attendanceTo=local(today);render();
   });
+  document.querySelectorAll('[data-attend]').forEach(el=>el.addEventListener('change',()=>{const panel=document.querySelector('[data-absence-fields="'+el.dataset.attend+'"]');if(panel)panel.style.display=el.checked?'none':'block'}));
+  document.querySelectorAll('[data-absence-reason]').forEach(el=>el.addEventListener('change',()=>{const wrap=document.querySelector('[data-absence-note-wrap="'+el.dataset.absenceReason+'"]');if(wrap)wrap.style.display=el.value==='altro'?'block':'none'}));
   $('#save-attendance')?.addEventListener('click',async e=>{
     const btn=e.currentTarget;btn.disabled=true;
     try{
@@ -942,17 +945,8 @@ function bindAttendance(){
       if(!ps.length)throw Error('Non ci sono allievi');
       let sess=sessions.find(x=>x.category_id===currentCat&&x.training_date===attendanceDate);
       const anyPresent=ps.some(p=>document.querySelector(`[data-attend="${p.id}"]`)?.checked);
-      if(!anyPresent){
-        if(sess){
-          await deleteTrainingSessions([sess.id]);
-        }else{
-          toast('Nessuna presenza selezionata: allenamento non creato');
-        }
-        btn.disabled=false;
-        return;
-      }
       if(!sess){const r=await sb.from('training_sessions').insert({category_id:currentCat,training_date:attendanceDate,created_by:me.id}).select('id').single();if(r.error)throw r.error;sess=r.data}
-      const data=ps.map(p=>({session_id:sess.id,player_id:p.id,present:!!document.querySelector(`[data-attend="${p.id}"]`)?.checked}));
+      const data=ps.map(p=>{const present=!!document.querySelector(`[data-attend="${p.id}"]`)?.checked;const reason=document.querySelector(`[data-absence-reason="${p.id}"]`)?.value||null;const note=document.querySelector(`[data-absence-note="${p.id}"]`)?.value.trim()||null;if(!present&&!reason&&!sessions.some(x=>x.id===sess.id))throw Error('Seleziona il motivo per ogni assenza');if(!present&&reason==='altro'&&!note)throw Error('Specifica il motivo per '+fullName(p));return {session_id:sess.id,player_id:p.id,present,absence_reason:present?null:reason,absence_note:!present&&reason==='altro'?note:null}});
       const r=await sb.from('training_attendance').upsert(data,{onConflict:'session_id,player_id'});if(r.error)throw r.error;
       await loadAttendance();render();toast('Presenze salvate correttamente');
     }catch(err){toast('Errore: '+err.message);btn.disabled=false}
