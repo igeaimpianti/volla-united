@@ -1122,27 +1122,24 @@ async function generateDistinta(m){
  const check=await PDFDocument.load(bytes);
  if(check.getPageCount()!==1)throw Error('La distinta generata non contiene una pagina valida');
  const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'.pdf';
- const blob=new Blob([bytes],{type:'application/pdf'});
- const url=URL.createObjectURL(blob);
- const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
- // Su iOS la condivisione diretta a WhatsApp puo aprire un'anteprima vuota.
- // Apriamo il PDF vero nel visualizzatore del dispositivo, da cui e possibile salvarlo e condividerlo.
- if(isIOS){
-   const a=document.createElement('a');a.href=url;a.download=filename;a.target='_blank';
-   document.body.appendChild(a);a.click();a.remove();
-   toast('PDF creato. Apri il documento scaricato e condividilo da File.');
- }else{
-   const file=new File([bytes],filename,{type:'application/pdf'});
-   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-     try{await navigator.share({files:[file]});toast('Distinta condivisa')}
-     catch(shareError){if(shareError.name!=='AbortError')throw shareError}
-   }else{
-     const a=document.createElement('a');a.href=url;a.download=filename;
-     document.body.appendChild(a);a.click();a.remove();
-     toast('PDF scaricato: condividilo come documento');
+ const file=new File([bytes],filename,{type:'application/pdf'});
+ // iOS PWA: non aprire URL blob in nuove finestre: Safari/WhatsApp puo mostrare nero.
+ // Condividi il file PDF binario, senza passare un link o un'anteprima temporanea.
+ if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+   try{
+     await navigator.share({files:[file],title:filename});
+     toast('Distinta inviata al menu di condivisione');
+   }catch(shareError){
+     if(shareError.name!=='AbortError')throw shareError;
    }
+ }else{
+   const blob=new Blob([bytes],{type:'application/pdf'});
+   const url=URL.createObjectURL(blob);
+   const a=document.createElement('a');a.href=url;a.download=filename;
+   document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),120000);
+   toast('Distinta PDF scaricata');
  }
- setTimeout(()=>URL.revokeObjectURL(url),120000);
  }catch(e){console.error(e);toast(e.message);alert('Impossibile generare la distinta: '+e.message)}finally{if(btn&&btn.isConnected)btn.disabled=false}
 }
 async function exportRosterPdf(){
