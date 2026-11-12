@@ -1069,7 +1069,7 @@ async function generateDistinta(m){
  try{
  const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
  const regional=usesRegionalDistinta(m);
- const template=regional?'distinta-regionali.pdf':'distinta-template.pdf';
+ const template=regional?'distinta-futura-soccer-regionali-corretta.pdf':'distinta-volla-united-corretta.pdf';
  const response=await fetch('./'+template,{cache:'no-store'});
  if(!response.ok)throw Error('Modello distinta non disponibile: '+template);
  const pdf=await PDFDocument.load(await response.arrayBuffer());const page=pdf.getPages()[0];
