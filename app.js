@@ -1082,6 +1082,18 @@ async function generateDistinta(m){
  const [background]=await pdf.embedPdf(templateBytes,[0]);
  const page=pdf.addPage([background.width,background.height]);
  page.drawPage(background,{x:0,y:0,width:background.width,height:background.height});
+ // Zona giocatori opaca: rimuove la filigrana centrale in ENTRAMBI i modelli
+ // senza alterare intestazione, loghi ufficiali, staff e firme.
+ // Ricostruisce la griglia originale sopra un fondo bianco uniforme.
+ const tableLeft=16,tableRight=580,tableTop=249.5,tableBottom=572.5;
+ const xGrid=[16,56,86,117,148,313,348,373,437,480,580];
+ const pdfX=v=>v*page.getWidth()/595.32;
+ const pdfY=v=>page.getHeight()-v*page.getHeight()/841.92;
+ page.drawRectangle({x:pdfX(tableLeft),y:pdfY(tableBottom),width:pdfX(tableRight-tableLeft),height:pdfY(tableTop)-pdfY(tableBottom),color:rgb(1,1,1)});
+ const gridInk=rgb(0.13,0.13,0.13);
+ for(const x of xGrid)page.drawLine({start:{x:pdfX(x),y:pdfY(tableTop)},end:{x:pdfX(x),y:pdfY(tableBottom)},thickness:0.65,color:gridInk});
+ for(let y=tableTop;y<=tableBottom+0.01;y+=17.55)page.drawLine({start:{x:pdfX(tableLeft),y:pdfY(y)},end:{x:pdfX(tableRight),y:pdfY(y)},thickness:0.65,color:gridInk});
+ page.drawLine({start:{x:pdfX(tableLeft),y:pdfY(tableBottom)},end:{x:pdfX(tableRight),y:pdfY(tableBottom)},thickness:0.65,color:gridInk});
  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=page.getWidth(),H=page.getHeight();
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
