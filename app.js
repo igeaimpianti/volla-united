@@ -1086,42 +1086,38 @@ async function generateDistinta(m){
  };
  const value=k=>val('df-'+k);
  // Il titolo libero viene inserito nello spazio già previsto, senza coprire la tabella.
- if(regional){
-   write(value('heading'),274,144,8.5,282,true);
- }else if(value('heading')){
-   page.drawRectangle({x:34*sx,y:H-148*sy,width:527*sx,height:16*sy,color:rgb(1,1,1)});
-   write('Distinta Giocatori partecipanti alla gara: '+value('heading'),36,144,8.5,520,true);
- }
+ // I nuovi modelli contengono gia il titolo decorativo: non sovrascriverlo.
+ // Il titolo della gara resta disponibile nel modulo e nel nome del documento.
  // Riga campionato: testo DOPO le etichette stampate.
- write(value('competition'),86,172,7,74);
- write(value('place'),231,172,7,132);
- write(fmtItalian(value('date')),389,172,7,78);
- write(value('time'),514,172,7,49);
+ write(value('competition'),16,198,8,145);
+ write(value('place'),175,198,8,160);
+ write(fmtItalian(value('date')),347,198,8,105);
+ write(value('time'),464,198,8,112);
  const ids=m.player_ids||[];
  if(ids.length>20)throw Error('Il modello contiene 20 righe: riduci i convocati prima di esportare');
  ids.forEach((id,i)=>{
    const p=players.find(x=>x.id===id);if(!p)return;
    const d=detailOf(id);
    // 20 righe, centrate verticalmente tra le linee della tabella.
-   const top=235.5+i*19.8;
-   write(p.jersey_number??'',35,top,8,31,true);
+   const top=271.5+i*17.55;
+   write(p.jersey_number??'',16,top,7.5,35,true);
    const parts=(p.birth_date||'').split('-');
-   if(parts.length===3){write(parts[2],77,top,8,20);write(parts[1],106,top,8,20);write(parts[0],132,top,8,26)}
-   write((p.last_name||'')+' '+(p.first_name||''),164,top,8,145);
-   write(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',315,top,7,31,true);
+   if(parts.length===3){write(parts[2],59,top,7,23);write(parts[1],89,top,7,23);write(parts[0],119,top,7,27)}
+   write((p.last_name||'')+' '+(p.first_name||''),149,top,7.5,160);
+   write(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',315,top,6.5,29,true);
    const figc=val('df-figc-'+id)||playerFigc(p);
    const ci=val('df-ci-'+id)||d.identity_number||'';
-   write(figc,365,top,7,57);
-   if(ci){write('C.I.',431,top,7,27);write(ci,465,top,7,95)}
+   write(figc,374,top,7,61);
+   if(ci){write('C.I.',440,top,6.5,25);write(ci,483,top,7,94)}
  });
  // Nomi staff dentro la colonna centrale; documenti nella colonna a destra.
- const staff=[['assistant',641],['accompanying',660],['referee_officer',679],['coach',699],['doctor',720],['masseur',741]];
+ const staff=[['assistant',606],['accompanying',624],['referee_officer',640],['coach',657],['doctor',674],['masseur',692]];
  for(const [key,top] of staff){
-   write(value(key),158,top,8,201);
-   write(value(key+'_doc'),486,top,7,75);
+   write(value(key),173,top,7.5,175);
+   write(value(key+'_doc'),470,top,7,105);
  }
  const bytes=await pdf.save();
- const filename='Distinta_Volla_United_'+(m.match_date||'gara')+'.pdf';
+ const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'.pdf';
  const file=new File([bytes],filename,{type:'application/pdf'});
  // Condividi direttamente il documento: NON condividere un URL blob, che su WhatsApp appare come link inutilizzabile.
  if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
