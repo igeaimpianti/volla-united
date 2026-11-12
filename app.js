@@ -1144,13 +1144,15 @@ async function generateDistinta(m){
    writeCenter(value(key),173,360,top-4,8);
    writeCenter(value(key+'_doc'),470,579,top-4,7.5);
  }
+ // Marcatura diagnostica: distingue un PDF rigenerato da una copia precedente.
+ page.drawText('REV BIANCA 10',{x:18*page.getWidth()/595.32,y:112*page.getHeight()/841.92,size:6,font:bold,color:rgb(.22,.22,.22)});
  const bytes=await pdf.save({useObjectStreams:false});
  // Verifica il documento prima di offrirlo: una pagina A4 valida e dati non vuoti.
  if(bytes.length<10000)throw Error('Il PDF generato e troppo piccolo: esportazione annullata');
  const check=await PDFDocument.load(bytes);
  if(check.getPageCount()!==1)throw Error('La distinta generata non contiene una pagina valida');
  if(check.getPage(0).getWidth()<590||check.getPage(0).getHeight()<835)throw Error('Formato A4 non valido');
- const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'.pdf';
+ const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'_SENZA_LOGO_V10.pdf';
  const file=new File([bytes],filename,{type:'application/pdf'});
  // iOS PWA: non aprire URL blob in nuove finestre: Safari/WhatsApp puo mostrare nero.
  // Condividi il file PDF binario, senza passare un link o un'anteprima temporanea.
