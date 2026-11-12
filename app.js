@@ -1072,7 +1072,16 @@ async function generateDistinta(m){
  const template=regional?'distinta-futura-soccer-regionali-corretta.pdf':'distinta-volla-united-corretta.pdf';
  const response=await fetch('./'+template,{cache:'no-store'});
  if(!response.ok)throw Error('Modello distinta non disponibile: '+template);
- const pdf=await PDFDocument.load(await response.arrayBuffer());const page=pdf.getPages()[0];
+ // Crea un documento NUOVO e importa il modello come sfondo.
+ // Non modificare direttamente il PDF sorgente: la riscrittura produceva riferimenti xref
+ // invalidi su alcuni visualizzatori iOS, pur lasciando il testo leggibile.
+ const templateBytes=await response.arrayBuffer();
+ const source=await PDFDocument.load(templateBytes);
+ if(source.getPageCount()!==1)throw Error('Modello distinta non valido');
+ const pdf=await PDFDocument.create();
+ const [background]=await pdf.embedPdf(templateBytes,[0]);
+ const page=pdf.addPage([background.width,background.height]);
+ page.drawPage(background,{x:0,y:0,width:background.width,height:background.height});
  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=page.getWidth(),H=page.getHeight();
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
@@ -1121,6 +1130,7 @@ async function generateDistinta(m){
  if(bytes.length<10000)throw Error('Il PDF generato e troppo piccolo: esportazione annullata');
  const check=await PDFDocument.load(bytes);
  if(check.getPageCount()!==1)throw Error('La distinta generata non contiene una pagina valida');
+ if(check.getPage(0).getWidth()<590||check.getPage(0).getHeight()<835)throw Error('Formato A4 non valido');
  const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'.pdf';
  const file=new File([bytes],filename,{type:'application/pdf'});
  // iOS PWA: non aprire URL blob in nuove finestre: Safari/WhatsApp puo mostrare nero.
