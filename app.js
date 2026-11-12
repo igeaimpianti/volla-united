@@ -1082,18 +1082,21 @@ async function generateDistinta(m){
  const [background]=await pdf.embedPdf(templateBytes,[0]);
  const page=pdf.addPage([background.width,background.height]);
  page.drawPage(background,{x:0,y:0,width:background.width,height:background.height});
- // Zona giocatori opaca: rimuove la filigrana centrale in ENTRAMBI i modelli
- // senza alterare intestazione, loghi ufficiali, staff e firme.
- // Ricostruisce la griglia originale sopra un fondo bianco uniforme.
- const tableLeft=16,tableRight=580,tableTop=249.5,tableBottom=572.5;
- const xGrid=[16,56,86,117,148,313,348,373,437,480,580];
+ // Copri soltanto l'interno delle celle dei modelli grafici originali.
+ // Le linee stampate sul modello restano visibili: niente doppia griglia sovrapposta.
+ // Coordinate misurate dal PDF sorgente A4, valide per entrambe le distinte.
  const pdfX=v=>v*page.getWidth()/595.32;
  const pdfY=v=>page.getHeight()-v*page.getHeight()/841.92;
- page.drawRectangle({x:pdfX(tableLeft),y:pdfY(tableBottom),width:pdfX(tableRight-tableLeft),height:pdfY(tableTop)-pdfY(tableBottom),color:rgb(1,1,1)});
- const gridInk=rgb(0.13,0.13,0.13);
- for(const x of xGrid)page.drawLine({start:{x:pdfX(x),y:pdfY(tableTop)},end:{x:pdfX(x),y:pdfY(tableBottom)},thickness:0.65,color:gridInk});
- for(let y=tableTop;y<=tableBottom+0.01;y+=17.55)page.drawLine({start:{x:pdfX(tableLeft),y:pdfY(y)},end:{x:pdfX(tableRight),y:pdfY(y)},thickness:0.65,color:gridInk});
- page.drawLine({start:{x:pdfX(tableLeft),y:pdfY(tableBottom)},end:{x:pdfX(tableRight),y:pdfY(tableBottom)},thickness:0.65,color:gridInk});
+ const cols=[13.2,56.5,86,115.5,145,311,347,372,435,482,582.5];
+ const rows=[252.8,270.8,289.4,308.2,326.8,345.3,363.7,381.7,399.3,416.8,434.3,451.8,469.3,486.8,504,521.5,539,556.5,574.3];
+ const insetX=1.35,insetY=1.25;
+ for(let j=0;j<rows.length-1;j++){
+   for(let i=0;i<cols.length-1;i++){
+     const left=cols[i]+insetX,right=cols[i+1]-insetX;
+     const top=rows[j]+insetY,bottom=rows[j+1]-insetY;
+     page.drawRectangle({x:pdfX(left),y:pdfY(bottom),width:pdfX(right-left),height:pdfY(top)-pdfY(bottom),color:rgb(1,1,1)});
+   }
+ }
  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=page.getWidth(),H=page.getHeight();
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
@@ -1145,14 +1148,14 @@ async function generateDistinta(m){
    writeCenter(value(key+'_doc'),470,579,top-4,7.5);
  }
  // Marcatura diagnostica: distingue un PDF rigenerato da una copia precedente.
- page.drawText('REV BIANCA 10',{x:18*page.getWidth()/595.32,y:112*page.getHeight()/841.92,size:6,font:bold,color:rgb(.22,.22,.22)});
+
  const bytes=await pdf.save({useObjectStreams:false});
  // Verifica il documento prima di offrirlo: una pagina A4 valida e dati non vuoti.
  if(bytes.length<10000)throw Error('Il PDF generato e troppo piccolo: esportazione annullata');
  const check=await PDFDocument.load(bytes);
  if(check.getPageCount()!==1)throw Error('La distinta generata non contiene una pagina valida');
  if(check.getPage(0).getWidth()<590||check.getPage(0).getHeight()<835)throw Error('Formato A4 non valido');
- const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'_SENZA_LOGO_V10.pdf';
+ const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'.pdf';
  const file=new File([bytes],filename,{type:'application/pdf'});
  // iOS PWA: non aprire URL blob in nuove finestre: Safari/WhatsApp puo mostrare nero.
  // Condividi il file PDF binario, senza passare un link o un'anteprima temporanea.
