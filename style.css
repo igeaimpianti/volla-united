@@ -169,3 +169,14 @@ input:focus,select:focus,textarea:focus{
 @media(prefers-reduced-motion:reduce){
  *,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }
+
+/* Fix: keep the map action below the call-up details, never overlay the text. */
+.vu-family-callups .item > small{display:block;line-height:1.55;white-space:normal;overflow-wrap:anywhere}
+.vu-family-callups .item > a.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  position:static;vertical-align:middle;max-width:100%;
+  margin:12px 0 0;padding:10px 15px;
+  text-decoration:none;white-space:normal;line-height:1.35;
+  box-shadow:none;
+}
+.vu-family-callups .item{overflow-wrap:anywhere}
