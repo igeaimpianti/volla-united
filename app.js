@@ -1089,41 +1089,48 @@ async function generateDistinta(m){
  const sx=W/595.32,sy=H/841.92;
  const write=(v,x,top,size=8,max=100,heavy=false)=>{
    let t=clean(v);if(!t)return;
-   const ft=heavy?bold:font,fs=size*sx;
+   const ft=bold,fs=size*sx;
    while(t.length&&ft.widthOfTextAtSize(t,fs)>max*sx)t=t.slice(0,-1);
    page.drawText(t,{x:x*sx,y:H-top*sy,size:fs,font:ft,color:rgb(0,0,0)});
+ };
+ const writeCenter=(v,left,right,top,size=8)=>{
+   let t=clean(v);if(!t)return;
+   const fs=size*sx,room=(right-left-4)*sx;
+   while(t.length&&bold.widthOfTextAtSize(t,fs)>room)t=t.slice(0,-1);
+   const tw=bold.widthOfTextAtSize(t,fs);
+   page.drawText(t,{x:(left+right)*sx/2-tw/2,y:H-top*sy,size:fs,font:bold,color:rgb(0,0,0)});
  };
  const value=k=>val('df-'+k);
  // Il titolo libero viene inserito nello spazio già previsto, senza coprire la tabella.
  // I nuovi modelli contengono gia il titolo decorativo: non sovrascriverlo.
  // Il titolo della gara resta disponibile nel modulo e nel nome del documento.
  // Riga campionato: testo DOPO le etichette stampate.
- write(value('competition'),16,198,8,145);
- write(value('place'),175,198,8,160);
- write(fmtItalian(value('date')),347,198,8,105);
- write(value('time'),464,198,8,112);
+ writeCenter(value('competition'),16,168,196,8.5);
+ writeCenter(value('place'),175,342,196,8.5);
+ writeCenter(fmtItalian(value('date')),347,458,196,8.5);
+ writeCenter(value('time'),464,580,196,8.5);
  const ids=m.player_ids||[];
  if(ids.length>20)throw Error('Il modello contiene 20 righe: riduci i convocati prima di esportare');
  ids.forEach((id,i)=>{
    const p=players.find(x=>x.id===id);if(!p)return;
    const d=detailOf(id);
    // 20 righe, centrate verticalmente tra le linee della tabella.
-   const top=271.5+i*17.55;
-   write(p.jersey_number??'',16,top,7.5,35,true);
+   const top=265.5+i*17.55;
+   writeCenter(p.jersey_number??'',16,56,top,8);
    const parts=(p.birth_date||'').split('-');
-   if(parts.length===3){write(parts[2],59,top,7,23);write(parts[1],89,top,7,23);write(parts[0],119,top,7,27)}
-   write((p.last_name||'')+' '+(p.first_name||''),149,top,7.5,160);
-   write(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',315,top,6.5,29,true);
+   if(parts.length===3){writeCenter(parts[2],57,86,top,7.5);writeCenter(parts[1],87,117,top,7.5);writeCenter(parts[0],118,148,top,7.5)}
+   writeCenter((p.last_name||'')+' '+(p.first_name||''),149,313,top,8);
+   writeCenter(d.team_role==='captain'?'CAP':d.team_role==='vice'?'V.CAP':'',314,348,top,7);
    const figc=val('df-figc-'+id)||playerFigc(p);
    const ci=val('df-ci-'+id)||d.identity_number||'';
-   write(figc,374,top,7,61);
-   if(ci){write('C.I.',440,top,6.5,25);write(ci,483,top,7,94)}
+   writeCenter(figc,374,437,top,7.5);
+   if(ci){writeCenter('C.I.',438,480,top,7);writeCenter(ci,481,579,top,7.5)}
  });
  // Nomi staff dentro la colonna centrale; documenti nella colonna a destra.
  const staff=[['assistant',606],['accompanying',624],['referee_officer',640],['coach',657],['doctor',674],['masseur',692]];
  for(const [key,top] of staff){
-   write(value(key),173,top,7.5,175);
-   write(value(key+'_doc'),470,top,7,105);
+   writeCenter(value(key),173,360,top-4,8);
+   writeCenter(value(key+'_doc'),470,579,top-4,7.5);
  }
  const bytes=await pdf.save({useObjectStreams:false});
  // Verifica il documento prima di offrirlo: una pagina A4 valida e dati non vuoti.
