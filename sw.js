@@ -1,6 +1,6 @@
 
 /* Volla United Academy - Service Worker v20261104.2 */
-const CACHE = 'volla-united-shell-20261108-passkey2';
+const CACHE = 'volla-united-shell-20261113-white-v10';
 
 self.addEventListener('install', event =>
   event.waitUntil(self.skipWaiting())
