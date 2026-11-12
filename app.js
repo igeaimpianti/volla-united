@@ -1082,21 +1082,25 @@ async function generateDistinta(m){
  const [background]=await pdf.embedPdf(templateBytes,[0]);
  const page=pdf.addPage([background.width,background.height]);
  page.drawPage(background,{x:0,y:0,width:background.width,height:background.height});
- // Copri soltanto l'interno delle celle dei modelli grafici originali.
- // Le linee stampate sul modello restano visibili: niente doppia griglia sovrapposta.
- // Coordinate misurate dal PDF sorgente A4, valide per entrambe le distinte.
+ // Cancella l'INTERA filigrana e le linee rasterizzate nell'area dati.
+ // Una sola superficie bianca evita aloni rossi e bordi frastagliati quando si ingrandisce.
+ // Griglia vettoriale nitida comune ai due modelli; intestazione e riquadri staff intatti.
  const pdfX=v=>v*page.getWidth()/595.32;
  const pdfY=v=>page.getHeight()-v*page.getHeight()/841.92;
  const cols=[13.2,56.5,86,115.5,145,311,347,372,435,482,582.5];
  const rows=[252.8,270.8,289.4,308.2,326.8,345.3,363.7,381.7,399.3,416.8,434.3,451.8,469.3,486.8,504,521.5,539,556.5,574.3];
- const insetX=1.35,insetY=1.25;
- for(let j=0;j<rows.length-1;j++){
-   for(let i=0;i<cols.length-1;i++){
-     const left=cols[i]+insetX,right=cols[i+1]-insetX;
-     const top=rows[j]+insetY,bottom=rows[j+1]-insetY;
-     page.drawRectangle({x:pdfX(left),y:pdfY(bottom),width:pdfX(right-left),height:pdfY(top)-pdfY(bottom),color:rgb(1,1,1)});
-   }
- }
+ const left=13.2,right=582.5,top=252.0,bottom=575.2;
+ page.drawRectangle({x:pdfX(left),y:pdfY(bottom),width:pdfX(right-left),height:pdfY(top)-pdfY(bottom),color:rgb(1,1,1)});
+ const lineColor=rgb(.12,.12,.12);
+ const segment=(x1,y1,x2,y2,width=.65)=>page.drawLine({
+   start:{x:pdfX(x1),y:pdfY(y1)},end:{x:pdfX(x2),y:pdfY(y2)},
+   thickness:width,color:lineColor
+ });
+ // Un solo tratto per bordo: niente duplicazioni e niente grafica rossa sottostante.
+ for(const x of cols)segment(x,top,x,bottom,x===left||x===right?1:.65);
+ segment(left,top,right,top,1);
+ for(const y of rows.slice(1,-1))segment(left,y,right,y,.65);
+ segment(left,bottom,right,bottom,1);
  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=page.getWidth(),H=page.getHeight();
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
