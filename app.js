@@ -1116,26 +1116,33 @@ async function generateDistinta(m){
    write(value(key),173,top,7.5,175);
    write(value(key+'_doc'),470,top,7,105);
  }
- const bytes=await pdf.save();
+ const bytes=await pdf.save({useObjectStreams:false});
+ // Verifica il documento prima di offrirlo: una pagina A4 valida e dati non vuoti.
+ if(bytes.length<10000)throw Error('Il PDF generato e troppo piccolo: esportazione annullata');
+ const check=await PDFDocument.load(bytes);
+ if(check.getPageCount()!==1)throw Error('La distinta generata non contiene una pagina valida');
  const filename=(regional?'Distinta_Futura_Soccer_':'Distinta_Volla_United_')+(m.match_date||'gara')+'.pdf';
- const file=new File([bytes],filename,{type:'application/pdf'});
- // Condividi direttamente il documento: NON condividere un URL blob, che su WhatsApp appare come link inutilizzabile.
- if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
-   try{
-     await navigator.share({files:[file]});
-     toast('Distinta condivisa');
-   }catch(shareError){
-     if(shareError.name!=='AbortError')throw shareError;
-   }
- }else{
-   // Browser senza condivisione di file: scarica il PDF, da allegare manualmente su WhatsApp.
-   const blob=new Blob([bytes],{type:'application/pdf'});
-   const url=URL.createObjectURL(blob);
-   const a=document.createElement('a');a.href=url;a.download=filename;
+ const blob=new Blob([bytes],{type:'application/pdf'});
+ const url=URL.createObjectURL(blob);
+ const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+ // Su iOS la condivisione diretta a WhatsApp puo aprire un'anteprima vuota.
+ // Apriamo il PDF vero nel visualizzatore del dispositivo, da cui e possibile salvarlo e condividerlo.
+ if(isIOS){
+   const a=document.createElement('a');a.href=url;a.download=filename;a.target='_blank';
    document.body.appendChild(a);a.click();a.remove();
-   setTimeout(()=>URL.revokeObjectURL(url),60000);
-   toast('PDF scaricato: allegalo come documento su WhatsApp');
+   toast('PDF creato. Apri il documento scaricato e condividilo da File.');
+ }else{
+   const file=new File([bytes],filename,{type:'application/pdf'});
+   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+     try{await navigator.share({files:[file]});toast('Distinta condivisa')}
+     catch(shareError){if(shareError.name!=='AbortError')throw shareError}
+   }else{
+     const a=document.createElement('a');a.href=url;a.download=filename;
+     document.body.appendChild(a);a.click();a.remove();
+     toast('PDF scaricato: condividilo come documento');
+   }
  }
+ setTimeout(()=>URL.revokeObjectURL(url),120000);
  }catch(e){console.error(e);toast(e.message);alert('Impossibile generare la distinta: '+e.message)}finally{if(btn&&btn.isConnected)btn.disabled=false}
 }
 async function exportRosterPdf(){
