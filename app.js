@@ -38,18 +38,22 @@ const VU_VAPID_PUBLIC_KEY='BDEBTIz1Y5JOw4sv_XCTIz15de3yXzV8u7h92j47jktL2iBK_qM_b
 function vuDecodeVapid(s){const pad='='.repeat((4-s.length%4)%4);const raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))}
 let vuPushActive=false;
 let vuDeviceSubscribed=false;
+let vuRegisteredPushDevices=0;
 async function vuCheckPush(){
  vuPushActive=false;
  vuDeviceSubscribed=false;
- if(!['parent','coach','admin'].includes(me?.role)||!sb||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)||Notification.permission!=='granted')return;
+ vuRegisteredPushDevices=0;
+ if(!['parent','coach','admin'].includes(me?.role)||!sb)return;
  try{
+  const {data,error}=await sb.from('push_subscriptions').select('endpoint').eq('user_id',me.id);
+  if(error)throw error;
+  vuRegisteredPushDevices=data?.length||0;
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)||Notification.permission!=='granted')return;
   const reg=await navigator.serviceWorker.ready;
   const sub=await reg.pushManager.getSubscription();
   if(!sub)return;
   vuDeviceSubscribed=true;
-  const {data,error}=await sb.from('push_subscriptions').select('id').eq('user_id',me.id).eq('endpoint',sub.endpoint).limit(1);
-  if(error)throw error;
-  vuPushActive=!!data?.length;
+  vuPushActive=!!data?.some(x=>x.endpoint===sub.endpoint);
  }catch(e){console.warn('Verifica iscrizione push:',e)}
 }
 async function vuEnablePush(){
@@ -65,11 +69,12 @@ async function vuEnablePush(){
   if(error)throw error;
   vuPushActive=true;
   vuDeviceSubscribed=true;
+  vuRegisteredPushDevices=Math.max(vuRegisteredPushDevices,1);
   toast('🔔 Notifiche push attivate su questo dispositivo');
   render();
  }catch(err){console.error('Web Push:',err);toast(err.message||'Impossibile attivare le notifiche')}finally{if(button?.isConnected)button.disabled=false}
 }
-const vuPushActivation=()=>vuDeviceSubscribed?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Ricevi gli avvisi Volla United, inclusi i compleanni dei calciatori della tua categoria. Su iPhone apri la PWA dalla schermata Home.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
+const vuPushActivation=()=>vuDeviceSubscribed||vuRegisteredPushDevices>0?'':`<section class="panel"><h3>🔔 Avvisi sul telefono</h3><p class="muted">Per ricevere le notifiche su questo iPhone, apri Volla United dalla schermata Home e consenti le notifiche nelle impostazioni del dispositivo.</p><button type="button" class="btn" id="vu-enable-push">🔔 Attiva notifiche</button></section>`;
 function vuRequestedMatch(){return new URLSearchParams(location.search).get('vu_match')}
 function vuRequestedNotification(){return new URLSearchParams(location.search).get('notification')}
 function vuClearPushUrl(){const u=new URL(location.href);u.searchParams.delete('notification');u.searchParams.delete('vu_match');u.searchParams.delete('vu_player');u.searchParams.delete('notifications');window.history.replaceState(null,'',u.pathname+u.search+u.hash)}
@@ -352,14 +357,22 @@ async function vuOpenParentCallup(m,playerId){
 async function vuSetCallupResponse(matchId,playerId,response){
  if(vuResponseSaving)return false;
  if(!await vuRefreshSingleResponse(matchId,playerId))return false;
- if(vuResponseFor(matchId,playerId)!=='none'){render();toast('Risposta già confermata e non modificabile');return false}
+ if(vuResponseFor(matchId,playerId)!=='none'){render();toast(vuResponseFor(matchId,playerId)==='present'?'✅ Presenza confermata':'❌ Assenza confermata');return true}
  if(me?.role!=='parent'||!players.some(p=>p.id===playerId)||!matches.some(m=>m.id===matchId&&m.player_ids?.includes(playerId))){toast('Convocazione non autorizzata');return false}
  vuResponseSaving=true;
  try{
   const {error}=await sb.rpc('vu_respond_callup',{p_match_id:matchId,p_player_id:playerId,p_response:response});
   if(error)throw error;
-  vuCallupResponses=vuCallupResponses.filter(r=>!(r.match_id===matchId&&r.player_id===playerId));vuCallupResponses.push({match_id:matchId,player_id:playerId,response,responded_at:new Date().toISOString()});vuResponsesLoaded=true;render();toast(response==='absent'?'Assenza confermata':'Presenza confermata');return true;
- }catch(e){toast('Errore conferma: '+e.message);return false}finally{vuResponseSaving=false}
+  await vuRefreshSingleResponse(matchId,playerId);
+  if(vuResponseFor(matchId,playerId)==='none'){
+    vuCallupResponses=vuCallupResponses.filter(r=>!(r.match_id===matchId&&r.player_id===playerId));
+    vuCallupResponses.push({match_id:matchId,player_id:playerId,response,responded_at:new Date().toISOString()});
+  }
+  vuResponsesLoaded=true;render();toast(response==='absent'?'❌ Assenza confermata':'✅ Presenza confermata');return true;
+ }catch(e){
+  if(await vuRefreshSingleResponse(matchId,playerId) && vuResponseFor(matchId,playerId)!=='none'){render();toast(vuResponseFor(matchId,playerId)==='present'?'✅ Presenza confermata':'❌ Assenza confermata');return true}
+  toast('Errore conferma: '+e.message);return false;
+ }finally{vuResponseSaving=false}
 }
 // Gli auguri WhatsApp sono disponibili solo ai mister/admin, mai ai genitori.
 // Il nome viene letto dal testo generato dal server per il compleanno.
@@ -1503,7 +1516,7 @@ function bindProfile(){
 function wireProfileResults(){document.querySelectorAll('[data-profile-player]').forEach(b=>b.onclick=()=>{profilePlayerId=b.dataset.profilePlayer;profileSearch='';render();document.querySelector('#profile-detail')?.scrollIntoView({behavior:'smooth',block:'start'})})}
 
 function vuIsUpcomingCallup(m,playerId,today){
- return m.player_ids?.includes(playerId)&&m.status!=='completed'&&m.match_date>=today;
+ return m.player_ids?.includes(playerId)&&m.status==='published'&&m.match_date>=today;
 }
 function familyPage(){
  const p=players.find(x=>x.id===activeChild);
