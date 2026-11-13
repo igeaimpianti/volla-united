@@ -834,17 +834,43 @@ function formatMessage(m){const dt=new Date(m.match_date+'T12:00:00');const date
 function preview(m,target){
  const area=$(target);if(!area)return;
  const message=formatMessage(m);
- area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview" style="white-space:pre-wrap">${esc(message)}</div><div class="actions"><button class="btn" type="button" data-share-callup>🟢 Condividi WhatsApp</button></div></section>`;
+ area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview" style="white-space:pre-wrap">${esc(message)}</div><div class="actions"><button class="btn" type="button" data-share-callup>🟢 Apri WhatsApp</button><button class="btn alt" type="button" data-copy-callup>📋 Copia messaggio</button></div><p class="muted">Se WhatsApp mostra soltanto il link, premi Copia messaggio e incolla il testo nella chat.</p></section>`;
  area.querySelector('[data-share-callup]').onclick=()=>shareCallupWhatsApp(message);
+ area.querySelector('[data-copy-callup]').onclick=()=>vuCopyCallup(message);
  area.scrollIntoView({behavior:'smooth',block:'start'});
 }
+async function vuCopyCallup(message){
+ const fullText=String(message||'').trim();
+ if(!fullText)return toast('Nessun messaggio da copiare');
+ try{
+  if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
+  await navigator.clipboard.writeText(fullText);
+  toast('Convocazione copiata. Incollala su WhatsApp.');
+  return true;
+ }catch(e){
+  const input=document.createElement('textarea');
+  input.value=fullText;input.readOnly=true;
+  input.style.cssText='position:fixed;left:0;top:0;opacity:0;width:1px;height:1px';
+  document.body.appendChild(input);input.focus();input.select();input.setSelectionRange(0,input.value.length);
+  let ok=false;try{ok=document.execCommand('copy')}catch(_){}
+  input.remove();
+  if(ok){toast('Convocazione copiata. Incollala su WhatsApp.');return true}
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;z-index:99999;background:#000d;padding:16px;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML='<section class="panel" style="width:min(100%,600px);max-height:90vh;overflow:auto"><h3>Testo convocazione</h3><p>Seleziona e copia il testo, poi incollalo nella chat WhatsApp.</p><textarea readonly style="width:100%;min-height:220px"></textarea><button type="button" class="btn">Chiudi</button></section>';
+  overlay.querySelector('textarea').value=fullText;
+  overlay.querySelector('button').onclick=()=>overlay.remove();
+  document.body.appendChild(overlay);overlay.querySelector('textarea').focus();overlay.querySelector('textarea').select();
+  return false;
+ }
+}
 async function shareCallupWhatsApp(message){
-  const fullText=String(message||'').trim();
-  if(!fullText)return toast('Nessun messaggio da condividere');
-  // Go straight to WhatsApp: native share extensions on some phones
-  // replace the full callup with only the embedded field/map URL.
-  // Encode the entire message as one text parameter.
-  window.location.assign('https://api.whatsapp.com/send?text='+encodeURIComponent(fullText));
+ const fullText=String(message||'').trim();
+ if(!fullText)return toast('Nessun messaggio da condividere');
+ // Prepare a clipboard backup before opening WhatsApp, as some OS handlers
+ // strip long text and preserve only the link.
+ try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(fullText);toast('Testo copiato: se manca su WhatsApp, incollalo nella chat.')}}catch(e){console.warn('Clipboard non disponibile',e)}
+ window.location.assign('https://api.whatsapp.com/send?text='+encodeURIComponent(fullText));
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
