@@ -839,24 +839,12 @@ function preview(m,target){
  area.scrollIntoView({behavior:'smooth',block:'start'});
 }
 async function shareCallupWhatsApp(message){
-  if(!message||!String(message).trim())return toast('Nessun messaggio da condividere');
-  const fullText=String(message);
-  // iOS: share plain text only. Never pass a url property, otherwise the
-  // receiving WhatsApp share extension may replace the message with that URL.
-  if(typeof navigator.share==='function'){
-    try{
-      await navigator.share({text:fullText});
-      return;
-    }catch(err){
-      if(err?.name==='AbortError')return;
-      console.warn('Condivisione nativa non riuscita',err);
-    }
-  }
-  // Fallback for browsers without Web Share API.
-  const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
-    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  const target=mobile?'https://api.whatsapp.com/send?text=':'https://web.whatsapp.com/send?text=';
-  window.location.href=target+encodeURIComponent(fullText);
+  const fullText=String(message||'').trim();
+  if(!fullText)return toast('Nessun messaggio da condividere');
+  // Go straight to WhatsApp: native share extensions on some phones
+  // replace the full callup with only the embedded field/map URL.
+  // Encode the entire message as one text parameter.
+  window.location.assign('https://api.whatsapp.com/send?text='+encodeURIComponent(fullText));
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
