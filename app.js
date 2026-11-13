@@ -834,7 +834,6 @@ function formatMessage(m){
  const dt=new Date(m.match_date+'T12:00:00');
  const date=isNaN(+dt)?m.match_date:dt.toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).toUpperCase();
  const names=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean).sort(sortPlayers);
- const location=fieldShortLink(m);
  const rows=[
   '⚽ CONVOCAZIONE - VOLLA UNITED ACADEMY',
   '',
@@ -858,7 +857,7 @@ function formatMessage(m){
   '',
   'MISTER: '+(m.coaches_text||''),
   '',
-  location?'POSIZIONE CAMPO: '+location:'',
+  'POSIZIONE CAMPO: '+(m.field_name||'')+', apri la mappa dalla convocazione nell’app',
   '#weLoveVollaUnited'
  ];
  return rows.filter((x,i)=>x||rows[i-1]!=='').join('\n').trim();
@@ -896,17 +895,22 @@ async function vuCopyCallup(message){
   return false;
  }
 }
-function shareCallupWhatsApp(message){
+async function shareCallupWhatsApp(message){
  const fullText=String(message||'').trim();
  if(!fullText)return toast('Nessun messaggio da condividere');
- // Open the installed WhatsApp app through its official custom URL scheme.
- // Trigger synchronously from the tap: async clipboard calls can consume the
- // user gesture and cause iOS standalone PWAs to drop the pre-filled payload.
- const encoded=encodeURIComponent(fullText);
- const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
-   (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
- const target=mobile?'whatsapp://send?text='+encoded:'https://wa.me/?text='+encoded;
- window.location.href=target;
+ // A text-only payload without URL avoids iOS/WhatsApp link-only extraction.
+ // The Web Share API must start in the original click gesture, before awaits.
+ if(typeof navigator.share==='function'){
+  try{
+   await navigator.share({text:fullText});
+   return;
+  }catch(err){
+   if(err?.name==='AbortError')return;
+   console.warn('Condivisione testo WhatsApp',err);
+  }
+ }
+ const target='https://api.whatsapp.com/send?text='+encodeURIComponent(fullText);
+ window.location.assign(target);
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
