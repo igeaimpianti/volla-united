@@ -1738,7 +1738,7 @@ async function vuCheckForUpdate(){
   const response=await fetch('./index.html?vu_check='+Date.now(),{cache:'no-store'});
   if(!response.ok)return;
   const html=await response.text();
-  const match=html.match(/app\\.js\\?v=([a-zA-Z0-9_-]+)/);
+  const match=html.match(/app\.js\?v=([a-zA-Z0-9_-]+)/);
   if(!match||match[1]===vuCurrentBuild||document.getElementById('vu-update-banner'))return;
   const banner=document.createElement('aside');
   banner.id='vu-update-banner';
