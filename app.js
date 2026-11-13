@@ -1727,3 +1727,28 @@ if(sb){sb.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'){me=null;page
 // al passaggio in background / ritorno in primo piano.
 // Se iOS termina il processo, non è possibile conservare i campi senza
 // persistenza locale (non richiesta).
+
+/* Version check for installed PWAs: never interrupt an edited form. */
+const vuCurrentBuild='20261113-pwa-version-check-v19';
+let vuVersionCheckAt=0,vuVersionChecking=false;
+async function vuCheckForUpdate(){
+ if(document.visibilityState==='hidden'||vuVersionChecking||Date.now()-vuVersionCheckAt<60000)return;
+ vuVersionChecking=true;vuVersionCheckAt=Date.now();
+ try{
+  const response=await fetch('./index.html?vu_check='+Date.now(),{cache:'no-store'});
+  if(!response.ok)return;
+  const html=await response.text();
+  const match=html.match(/app\\.js\\?v=([a-zA-Z0-9_-]+)/);
+  if(!match||match[1]===vuCurrentBuild||document.getElementById('vu-update-banner'))return;
+  const banner=document.createElement('aside');
+  banner.id='vu-update-banner';
+  banner.setAttribute('role','status');
+  banner.style.cssText='position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:16px;right:16px;z-index:2147483000;max-width:520px;margin:auto;background:#20232b;color:white;border:1px solid #bf4b66;border-radius:16px;padding:14px;box-shadow:0 10px 40px #0009;display:flex;gap:12px;align-items:center;justify-content:space-between';
+  banner.innerHTML='<span style="font-size:13px;font-weight:700">Nuova versione disponibile</span><button type="button" class="btn sm">Aggiorna ora</button>';
+  banner.querySelector('button').addEventListener('click',()=>window.location.reload());
+  document.body.appendChild(banner);
+ }catch(err){console.warn('Verifica aggiornamento PWA:',err)}
+ finally{vuVersionChecking=false}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')vuCheckForUpdate()});
+window.addEventListener('focus',vuCheckForUpdate);
