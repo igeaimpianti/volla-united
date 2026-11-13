@@ -796,7 +796,7 @@ function vuValidateTraining(ids){
 const matchEditor=()=>{let ids=convocable();if(editing&&me.role==='admin'&&!ids.includes(currentCat))ids=[...ids,currentCat];if(!ids.includes(currentCat))currentCat=ids[0]||'';if(!ids.length)return'<h2>📋 Convocazioni</h2><div class="panel empty">Non sei autorizzato a creare convocazioni per nessuna categoria.</div>';const ps=players.filter(p=>p.category_id===currentCat).sort(sortPlayers);return`<h2 class="sectionhead">📋 ${editing?'Modifica':'Nuova'} convocazione</h2>${catSelector(ids)}<div id="historydetail"></div><form id="matchform" class="panel"><div class="fields"><div class="field"><label>Tipologia gara</label><select id="kind">${vuMatchTypeOptions()}</select></div>${field('customkind','Se ALTRO, specifica',draft?.custom_kind||((draft?.match_type&&!['AMICHEVOLE','TORNEO FIGC','FIGC','NEXT GEN','CAMPIONATO','RAGAZZI D’ORO','TORNEO','TRIANGOLARE'].includes(draft.match_type))?draft.match_type:''))}${field('tournamentname','Nome torneo',draft?.tournament_name||'').replace('</div>','<div id="tournament-suggestions" role="listbox" style="display:none;max-height:180px;overflow-y:auto;border:1px solid #54313e;border-radius:10px"></div></div>')}${field('fieldname','Campo da gioco',draft?.field_name||'MADRIGAL - VOLLA').replace('</div>','<div id="field-suggestions" style="display:none;max-height:180px;overflow:auto;border:1px solid #54313e;border-radius:10px"></div></div>')}<div class="field"><label for="field-maps-url">LINK POSIZIONE CAMPO (GOOGLE MAPS)</label><input id="field-maps-url" type="url" placeholder="https://maps.app.goo.gl/..." value="${esc(fieldMapUrl(draft?.field_name||'MADRIGAL'))}"><small id="field-location-hint">FACOLTATIVO · SALVA UNA VOLTA, RIUTILIZZA SEMPRE</small></div>${draft?.match_type==='TORNEO'?'':`<div class="field" id="vu-venue-field"><label for="vu-venue">CASA O TRASFERTA</label><select id="vu-venue"><option value="auto" ${!draft?.home_away?'selected':''}>AUTOMATICO (MADRIGAL = CASA)</option><option value="home" ${draft?.home_away==='home'?'selected':''}>🏠 CASA</option><option value="away" ${draft?.home_away==='away'?'selected':''}>🚌 TRASFERTA</option></select><small>LA SCELTA MANUALE PREVALE SEMPRE SUL CAMPO.</small></div>`}${field('opponent','Avversario',draft?.opponent).replace('<input id="opponent"','<input id="opponent" autocomplete="off"').replace('</div>','<div id="opponent-suggestions" role="listbox" style="display:none;position:static;width:100%;max-height:180px;overflow-y:auto;border:1px solid #54313e;border-radius:10px;background:#24151d;z-index:100;box-shadow:0 10px 25px #0008"></div></div>')}${field('date','Data',draft?.match_date||new Date().toLocaleDateString('en-CA'),'date')}${field('meet','Ora convocazione',draft?.meeting_time||'17:35','time')}${field('start','Inizio partita',draft?.kick_off_time||'17:50','time')}${field('shirtcolor','Maglia',draft?.jersey_color||'ROSSO-NERA')}${field('shorts','Pantaloncini',draft?.shorts_color||'NERO')}${field('socks','Calzerotti',draft?.socks_color||'NERO')}</div><div class="field" style="margin-top:13px"><label>Avviso ai genitori</label><textarea id="notice">${esc(draft?.notice||'Comunicare tempestivamente ogni tipo di assenza IN PRIVATO.')}</textarea></div><div class="field" style="margin-top:13px"><label>Mister responsabile della categoria</label><select id="coaches"></select></div><div class="field" style="margin-top:13px"><label>Dirigente</label><input id="dirigente" type="text" list="vu-dirigenti-suggestions" placeholder="SCRIVI O SELEZIONA IL DIRIGENTE" autocomplete="off" maxlength="120"><datalist id="vu-dirigenti-suggestions"></datalist></div><h3 class="sectionhead">Seleziona i convocati · <span id="count">${selected.length}</span></h3><p class="muted" id="vu-training-week"></p><div class="stack" id="vu-callup-players"></div><details class="panel" style="margin-top:14px" id="vu-external-panel" ${vuExternalCount()?'open':''}><summary style="cursor:pointer;font-weight:700">➕ Calciatori di altri gruppi · <span id="vu-external-count">${vuExternalCount()}</span>${me.role==='admin'?'':'/'+vuExternalLimit}</summary><p class="muted">Gruppi della stessa annata o fino a due anni più giovani. ${me.role==='admin'?'':'Massimo 5 calciatori esterni per convocazione.'}</p><div id="vu-external-players"></div></details><section class="panel" style="margin-top:14px;border:1px solid #704451"><h3>🗓 PUBBLICAZIONE</h3><div class="field"><label for="vu-publish-mode">Quando renderla visibile ai genitori</label><select id="vu-publish-mode"><option value="draft" ${!draft?.status||draft.status==='draft'?'selected':''}>SALVA BOZZA (NON VISIBILE)</option><option value="published" ${draft?.status==='published'?'selected':''}>PUBBLICA SUBITO</option><option value="scheduled" ${draft?.status==='scheduled'?'selected':''}>PROGRAMMA DATA E ORA</option></select></div><div class="field" id="vu-publish-time-wrap" style="${draft?.status==='scheduled'?'':'display:none'}"><label for="vu-publish-time">DATA E ORA DI PUBBLICAZIONE (ITALIA)</label><input type="datetime-local" id="vu-publish-time" value="${draft?.publish_at?esc(new Date(draft.publish_at).toLocaleString('sv-SE',{timeZone:'Europe/Rome'}).replace(' ','T').slice(0,16)):''}"><small>La convocazione resterà nascosta ai genitori fino all'orario indicato.</small></div></section><div class="actions"><button class="btn" type="submit">💾 Salva convocazione</button><button class="btn alt" type="button" data-action="preview">👁 Anteprima WhatsApp</button></div></form><div id="previewarea"></div>`};
 function vuPublicationFields(){const mode=val('vu-publish-mode')||'draft';const input=val('vu-publish-time');if(mode==='scheduled'){if(!input)throw Error('Seleziona data e ora di pubblicazione');const at=new Date(input);if(!Number.isFinite(at.getTime())||at.getTime()<=Date.now())throw Error('La pubblicazione deve essere programmata nel futuro');return {status:'scheduled',publish_at:at.toISOString(),published_at:null};}return {status:mode,publish_at:null,...(mode==='published'?{published_at:new Date().toISOString()}:{published_at:null})}}
 function getDraft(){return{...vuPublicationFields(),category_id:currentCat,match_type:upper(val('kind')==='ALTRO'?val('customkind'):val('kind')),tournament_name:val('kind')==='TORNEO'?upper(val('tournamentname')):null,field_name:upper(val('fieldname')),home_away:val('kind')==='TORNEO'?null:({'home':'home','away':'away'}[val('vu-venue')]||null),opponent:upper(val('opponent')),match_date:val('date'),meeting_time:val('meet'),kick_off_time:val('start'),jersey_color:upper(val('shirtcolor')),shorts_color:upper(val('shorts')),socks_color:upper(val('socks')),notice:upper(val('notice')),coaches_text:upper(val('coaches')),dirigente_text:upper(val('dirigente')),player_ids:selected}}
-const callHistory=()=>`<h2>🗂 Storico convocazioni</h2>${catSelector()}<section class="panel">${matches.filter(m=>m.category_id===currentCat&&m.status!=='completed').sort((a,b)=>b.match_date.localeCompare(a.match_date)||String(b.kick_off_time||'').localeCompare(String(a.kick_off_time||''))).map(m=>`<div class="item"><strong>${esc(isTournament(m)?m.tournament_name||'TORNEO':m.opponent)} · ${esc(dateIt(m.match_date))} · ORE ${esc((m.kick_off_time||'--:--').slice(0,5))}</strong><small>${esc(m.match_type||'')} · ${esc(m.field_name||'')} · Mister: ${esc(matchCoachName(m))}</small>${vuCallupSummary(m)}<div class="vu-callup-state" style="display:inline-flex;align-items:center;gap:6px;margin:8px 0 12px;padding:6px 11px;border-radius:999px;border:1px solid #805161;background:#35202b;font-size:11px;font-weight:800;letter-spacing:.04em">${m.status==='published'?'🟢 PUBBLICATA':m.status==='scheduled'?'🕒 PROGRAMMATA '+esc(m.publish_at?new Date(m.publish_at).toLocaleString('it-IT',{timeZone:'Europe/Rome'}):''):m.status==='draft'?'📝 BOZZA':'📋 '+esc(String(m.status||'BOZZA').toUpperCase())}</div><div class="actions"><button type="button" class="btn alt sm" data-action="view-callup" data-id="${m.id}">👥 PRESENTI / ASSENTI</button><button type="button" class="btn alt sm" data-action="edit-match" data-id="${m.id}">✏️ Modifica</button><button type="button" class="btn sm" data-action="distinta" data-id="${m.id}">📄 Distinta</button><button type="button" class="btn alt sm" data-action="share-match" data-id="${m.id}">🟢 WhatsApp</button><button type="button" class="btn sm" data-action="result-match" data-id="${m.id}">🏁 Inserisci risultato</button><button type="button" class="btn alt sm" data-action="delete-match" data-id="${m.id}">🗑 Elimina</button></div></div>`).join('')||'<p class="empty">Nessuna convocazione salvata in attesa del risultato.</p>'}</section><div id="historydetail"></div>`;
+const callHistory=()=>`<h2>🗂 Storico convocazioni</h2>${catSelector()}<section class="panel">${matches.filter(m=>m.category_id===currentCat&&m.status!=='completed').sort((a,b)=>b.match_date.localeCompare(a.match_date)||String(b.kick_off_time||'').localeCompare(String(a.kick_off_time||''))).map(m=>`<div class="item"><strong>${esc(isTournament(m)?m.tournament_name||'TORNEO':m.opponent)} · ${esc(dateIt(m.match_date))} · ORE ${esc((m.kick_off_time||'--:--').slice(0,5))}</strong><small>${esc(m.match_type||'')} · ${esc(m.field_name||'')} · Mister: ${esc(matchCoachName(m))}</small>${vuCallupSummary(m)}<div class="vu-callup-state" style="display:inline-flex;align-items:center;gap:6px;margin:8px 0 12px;padding:6px 11px;border-radius:999px;border:1px solid #805161;background:#35202b;font-size:11px;font-weight:800;letter-spacing:.04em">${m.status==='published'?'🟢 PUBBLICATA':m.status==='scheduled'?'🕒 PROGRAMMATA '+esc(m.publish_at?new Date(m.publish_at).toLocaleString('it-IT',{timeZone:'Europe/Rome'}):''):m.status==='draft'?'📝 BOZZA':'📋 '+esc(String(m.status||'BOZZA').toUpperCase())}</div><div class="actions"><button type="button" class="btn alt sm" data-action="view-callup" data-id="${m.id}">👥 PRESENTI / ASSENTI</button><button type="button" class="btn alt sm" data-action="edit-match" data-id="${m.id}">✏️ Modifica</button><button type="button" class="btn sm" data-action="distinta" data-id="${m.id}">📄 Distinta</button><button type="button" class="btn alt sm" data-action="share-match" data-id="${m.id}">🟢 WhatsApp</button><button type="button" class="btn alt sm" data-action="share-location" data-id="${m.id}">📍 Condividi posizione</button><button type="button" class="btn sm" data-action="result-match" data-id="${m.id}">🏁 Inserisci risultato</button><button type="button" class="btn alt sm" data-action="delete-match" data-id="${m.id}">🗑 Elimina</button></div></div>`).join('')||'<p class="empty">Nessuna convocazione salvata in attesa del risultato.</p>'}</section><div id="historydetail"></div>`;
 const history=()=>`<h2>🏟 Storico partite</h2>${catSelector()}<section class="panel">${matches.filter(m=>m.category_id===currentCat&&m.status==='completed').sort((a,b)=>b.match_date.localeCompare(a.match_date)).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))} · ${esc(m.match_type)} · Mister: ${esc(matchCoachName(m))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="empty">Nessuna partita conclusa.</p>'}</section><div id="historydetail"></div>`;
 const isTournament=m=>m.match_type==='TORNEO';
 const vuBandsDefault=['PLATINO','ORO','ARGENTO','BRONZO'];
@@ -834,39 +834,15 @@ function formatMessage(m){
  const dt=new Date(m.match_date+'T12:00:00');
  const date=isNaN(+dt)?m.match_date:dt.toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).toUpperCase();
  const names=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean).sort(sortPlayers);
- const rows=[
-  '⚽ CONVOCAZIONE - VOLLA UNITED ACADEMY',
-  '',
-  'TIPOLOGIA GARA: '+(m.match_type||''),
-  'CAMPO DA GIOCO: '+(m.field_name||''),
-  'DATA: '+date,
-  isTournament(m)?'TORNEO: '+(m.tournament_name||''):'AVVERSARIO: '+(m.opponent||''),
-  'ORA CONVOCAZIONE: '+(m.meeting_time||'').slice(0,5),
-  'INIZIO PARTITA: '+(m.kick_off_time||'').slice(0,5),
-  '',
-  'COMPLETO GARA',
-  'Maglia: '+(m.jersey_color||''),
-  'Pantaloncini: '+(m.shorts_color||''),
-  'Calzerotti: '+(m.socks_color||''),
-  '',
-  'ATTENZIONE',
-  m.notice||'',
-  '',
-  'CONVOCATI',
-  ...names.map((p,i)=>(i+1)+'. '+upper(p.last_name)+' '+upper(p.first_name)),
-  '',
-  'MISTER: '+(m.coaches_text||''),
-  '',
-  'POSIZIONE CAMPO: '+(m.field_name||'')+', apri la mappa dalla convocazione nell’app',
-  '#weLoveVollaUnited'
- ];
- return rows.filter((x,i)=>x||rows[i-1]!=='').join('\n').trim();
+ const location=canonicalField(m.field_name)||m.field_name||'DA DEFINIRE';
+ return `ⒸⓄⓃⓋⓄⒸⒶⓏⒾⓄⓃⒺ\n\n⚽️ 𝚃𝙸𝙿𝙾𝙻𝙾𝙶𝙸𝙰 𝙶𝙰𝚁𝙰: ${m.match_type||''}\n🏟 𝙲𝙰𝙼𝙿𝙾 𝙳𝙰 𝙶𝙸𝙾𝙲𝙾: ${location}\n🗓 𝙳𝙰𝚃A: ${date}\n${isTournament(m)?'🏆 TORNEO: '+(m.tournament_name||''):'🥅 𝙰𝚅𝚅𝙴𝚁𝚂𝙰𝚁𝙸𝙾: '+(m.opponent||'')}\n⏱ 𝙾𝚛𝚊 𝚌𝚘𝚗𝚟𝚘𝚌𝚊𝚣𝚒𝚘𝚗𝚎: ${(m.meeting_time||'').slice(0,5).replace(':',',')}\n⏱ inizio partita : ${(m.kick_off_time||'').slice(0,5).replace(':',',')}\n🎽 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚘 𝚐𝚊𝚛𝚊:\n𝑴𝒂𝒈𝒍𝒊𝒂 𝐆𝐀𝐑𝐀  ${m.jersey_color||''}\n𝑷𝒂𝒏𝒕𝒂𝒍𝒐𝒏𝒄𝒊𝒏𝒊 ${m.shorts_color||''}\n𝑪𝒂𝒍𝒛𝒆𝒓𝒐𝒕𝒕𝒊 ${m.socks_color||''}\n⚠️ 𝐀𝐓𝐓𝐄𝐍𝐙𝐈𝐎𝐍𝐄\n${m.notice||''}\nℂ𝕆ℕ𝕍𝕆ℂ𝔸𝕋𝕀\n${names.map((p,i)=>`${i+1}. ${upper(p.last_name)} ${upper(p.first_name)}`).join('\n')}\n🖋 𝙼𝚒𝚜𝚝𝚎𝚛\n${m.coaches_text||''}\n📍 POSIZIONE: ${location}\n#𝚠𝚎𝙻⚽️𝚟𝚎 VOLLAUNITED🔥`;
 }
 function preview(m,target){
  const area=$(target);if(!area)return;
  const message=formatMessage(m);
- area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview" style="white-space:pre-wrap">${esc(message)}</div><div class="actions"><button class="btn" type="button" data-share-callup>🟢 Apri WhatsApp</button><button class="btn alt" type="button" data-copy-callup>📋 Copia messaggio</button></div><p class="muted">Se WhatsApp mostra soltanto il link, premi Copia messaggio e incolla il testo nella chat.</p></section>`;
+ area.innerHTML=`<section class="panel"><h3>Anteprima WhatsApp</h3><div class="preview" style="white-space:pre-wrap">${esc(message)}</div><div class="actions"><button class="btn" type="button" data-share-callup>🟢 WhatsApp</button><button class="btn alt" type="button" data-share-location>📍 Condividi posizione</button><button class="btn alt" type="button" data-copy-callup>📋 Copia messaggio</button></div><p class="muted">Se WhatsApp mostra soltanto il link, premi Copia messaggio e incolla il testo nella chat.</p></section>`;
  area.querySelector('[data-share-callup]').onclick=()=>shareCallupWhatsApp(message);
+ area.querySelector('[data-share-location]').onclick=()=>shareMatchLocation(m);
  area.querySelector('[data-copy-callup]').onclick=()=>vuCopyCallup(message);
  area.scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -911,6 +887,13 @@ async function shareCallupWhatsApp(message){
  }
  const target='https://api.whatsapp.com/send?text='+encodeURIComponent(fullText);
  window.location.assign(target);
+}
+function shareMatchLocation(m){
+ const link=fieldShortLink(m);
+ if(!link)return toast('Posizione non disponibile: configura il link Google Maps del campo');
+ const name=canonicalField(m.field_name)||m.field_name||'CAMPO DA GIOCO';
+ const text='📍 POSIZIONE CAMPO: '+name+'\n'+link;
+ window.location.href='https://api.whatsapp.com/send?text='+encodeURIComponent(text);
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
@@ -1282,9 +1265,10 @@ const savedMatch=matches.find(x=>x.id===matchId);
 if(savedMatch){
  const host=$('#historydetail');
  if(host){
-  host.innerHTML=`<section class="panel"><h3>✅ Convocazione salvata</h3><p>${esc(savedMatch.opponent)} · ${esc(dateIt(savedMatch.match_date))}</p><div class="actions"><button type="button" class="btn" id="saved-distinta">📄 Crea distinta PDF</button><button type="button" class="btn alt" id="saved-whatsapp">🟢 Condividi WhatsApp</button></div></section>`;
+  host.innerHTML=`<section class="panel"><h3>✅ Convocazione salvata</h3><p>${esc(savedMatch.opponent)} · ${esc(dateIt(savedMatch.match_date))}</p><div class="actions"><button type="button" class="btn" id="saved-distinta">📄 Crea distinta PDF</button><button type="button" class="btn alt" id="saved-whatsapp">🟢 Condividi WhatsApp</button><button type="button" class="btn alt" id="saved-location">📍 Condividi posizione</button></div></section>`;
   $('#saved-distinta').onclick=()=>openDistinta(savedMatch);
   $('#saved-whatsapp').onclick=()=>shareCallupWhatsApp(formatMessage(savedMatch));
+   $('#saved-location').onclick=()=>shareMatchLocation(savedMatch);
   host.scrollIntoView({behavior:'smooth',block:'start'});
  }
 }
@@ -1314,6 +1298,12 @@ if(action==='distinta'){
  if(!m)throw Error('Convocazione non trovata');
  if(!allowed(m.category_id,'view'))throw Error('Non autorizzato');
  openDistinta(m);return;
+}
+if(action==='share-location'){
+ const m=matches.find(x=>x.id===id);
+ if(!m)throw Error('Convocazione non trovata');
+ if(!allowed(m.category_id,'view'))throw Error('Non autorizzato');
+ shareMatchLocation(m);return;
 }
 if(action==='share-match'){
  const m=matches.find(x=>x.id===id);
