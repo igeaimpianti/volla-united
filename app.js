@@ -864,13 +864,17 @@ async function vuCopyCallup(message){
   return false;
  }
 }
-async function shareCallupWhatsApp(message){
+function shareCallupWhatsApp(message){
  const fullText=String(message||'').trim();
  if(!fullText)return toast('Nessun messaggio da condividere');
- // Prepare a clipboard backup before opening WhatsApp, as some OS handlers
- // strip long text and preserve only the link.
- try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(fullText);toast('Testo copiato: se manca su WhatsApp, incollalo nella chat.')}}catch(e){console.warn('Clipboard non disponibile',e)}
- window.location.assign('https://api.whatsapp.com/send?text='+encodeURIComponent(fullText));
+ // Open the installed WhatsApp app through its official custom URL scheme.
+ // Trigger synchronously from the tap: async clipboard calls can consume the
+ // user gesture and cause iOS standalone PWAs to drop the pre-filled payload.
+ const encoded=encodeURIComponent(fullText);
+ const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||
+   (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+ const target=mobile?'whatsapp://send?text='+encoded:'https://wa.me/?text='+encoded;
+ window.location.href=target;
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
