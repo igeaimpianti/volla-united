@@ -810,7 +810,35 @@ const matchEditor=()=>{let ids=convocable();if(editing&&me.role==='admin'&&!ids.
 function vuPublicationFields(){const previous=editing?matches.find(m=>m.id===editing):null;if(previous?.status==='published')return {status:'published',publish_at:null,published_at:previous.published_at||previous.created_at};const mode=val('vu-publish-mode')||'draft';const input=val('vu-publish-time');if(mode==='scheduled'){if(!input)throw Error('Seleziona data e ora di pubblicazione');const at=new Date(input);if(!Number.isFinite(at.getTime())||at.getTime()<=Date.now())throw Error('La pubblicazione deve essere programmata nel futuro');return {status:'scheduled',publish_at:at.toISOString(),published_at:null};}return {status:mode,publish_at:null,...(mode==='published'?{published_at:new Date().toISOString()}:{published_at:null})}}
 function getDraft(){return{...vuPublicationFields(),category_id:currentCat,match_type:upper(val('kind')==='ALTRO'?val('customkind'):val('kind')),tournament_name:val('kind')==='TORNEO'?upper(val('tournamentname')):null,field_name:upper(val('fieldname')),home_away:val('kind')==='TORNEO'?null:({'home':'home','away':'away'}[val('vu-venue')]||null),opponent:upper(val('opponent')),match_date:val('date'),meeting_time:val('meet'),kick_off_time:val('start'),jersey_color:upper(val('shirtcolor')),shorts_color:upper(val('shorts')),socks_color:upper(val('socks')),notice:upper(val('notice')),coaches_text:upper(val('coaches')),dirigente_text:upper(val('dirigente')),player_ids:selected}}
 const callHistory=()=>`<h2>🗂 Storico convocazioni</h2>${catSelector()}<section class="panel">${matches.filter(m=>m.category_id===currentCat&&m.status!=='completed').sort((a,b)=>b.match_date.localeCompare(a.match_date)||String(b.kick_off_time||'').localeCompare(String(a.kick_off_time||''))).map(m=>`<div class="item"><strong>${esc(isTournament(m)?m.tournament_name||'TORNEO':m.opponent)} · ${esc(dateIt(m.match_date))} · ORE ${esc((m.kick_off_time||'--:--').slice(0,5))}</strong><small>${esc(m.match_type||'')} · ${esc(m.field_name||'')} · Mister: ${esc(matchCoachName(m))}</small>${vuCallupSummary(m)}<div class="vu-callup-state" style="display:inline-flex;align-items:center;gap:6px;margin:8px 0 12px;padding:6px 11px;border-radius:999px;border:1px solid #805161;background:#35202b;font-size:11px;font-weight:800;letter-spacing:.04em">${m.status==='published'?'🟢 PUBBLICATA':m.status==='scheduled'?'🕒 PROGRAMMATA '+esc(m.publish_at?new Date(m.publish_at).toLocaleString('it-IT',{timeZone:'Europe/Rome'}):''):m.status==='draft'?'📝 BOZZA':'📋 '+esc(String(m.status||'BOZZA').toUpperCase())}</div><div class="vu-match-actions"><div class="vu-action-group"><span class="vu-action-label">GESTIONE</span><div class="vu-action-grid"><button type="button" class="btn alt sm" data-action="view-callup" data-id="${m.id}">👥 Presenti / assenti</button><button type="button" class="btn alt sm" data-action="edit-match" data-id="${m.id}">✏️ Modifica</button></div></div><div class="vu-action-group"><span class="vu-action-label">CONDIVISIONE</span><div class="vu-action-grid"><button type="button" class="btn alt sm" data-action="share-match" data-id="${m.id}">🟢 WhatsApp</button><button type="button" class="btn alt sm" data-action="share-location" data-id="${m.id}">📍 Condividi posizione</button></div></div><div class="vu-action-group"><span class="vu-action-label">PARTITA</span><div class="vu-action-grid"><button type="button" class="btn sm" data-action="distinta" data-id="${m.id}">📄 Distinta</button><button type="button" class="btn sm" data-action="result-match" data-id="${m.id}">🏁 Inserisci risultato</button></div></div><div class="vu-action-footer"><button type="button" class="btn alt sm" data-action="delete-match" data-id="${m.id}">🗑 Elimina convocazione</button></div></div></div>`).join('')||'<p class="empty">Nessuna convocazione salvata in attesa del risultato.</p>'}</section><div id="historydetail"></div>`;
-const history=()=>`<h2>🏟 Storico partite</h2>${catSelector()}<section class="panel">${matches.filter(m=>m.category_id===currentCat&&m.status==='completed').sort((a,b)=>b.match_date.localeCompare(a.match_date)).map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))} · ${esc(m.match_type)} · Mister: ${esc(matchCoachName(m))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')||'<p class="empty">Nessuna partita conclusa.</p>'}</section><div id="historydetail"></div>`;
+function vuResultGroup(m){
+ const type=String(m.match_type||'ALTRO').trim().toUpperCase();
+ if(type==='FIGC'||type==='TORNEO FIGC')return 'FIGC';
+ if(type.includes('SPORT')&&type.includes('FUN'))return 'SPORT E FUN';
+ if(type==='AMICHEVOLE'||type==='AMICHEVOLI')return 'AMICHEVOLI';
+ if(type==='TORNEO')return 'TORNEI';
+ return type||'ALTRO';
+}
+function vuResultGroups(played){
+ const groups=new Map();
+ for(const m of played){
+  const name=vuResultGroup(m);
+  if(!groups.has(name))groups.set(name,[]);
+  groups.get(name).push(m);
+ }
+ const priority=['FIGC','SPORT E FUN','AMICHEVOLI'];
+ const customOrder=vuMatchTypes.map(type=>vuResultGroup({match_type:type}));
+ return [...groups.entries()].sort(([a],[b])=>{
+  if(a==='TORNEI')return 1;
+  if(b==='TORNEI')return -1;
+  const order=x=>priority.includes(x)?priority.indexOf(x):3+(customOrder.indexOf(x)===-1?customOrder.length:customOrder.indexOf(x));
+  return order(a)-order(b)||a.localeCompare(b,'it');
+ }).map(([name,items])=>({name,items:items.sort((a,b)=>String(b.match_date||'').localeCompare(String(a.match_date||''))||String(b.kick_off_time||'').localeCompare(String(a.kick_off_time||'')))}));
+}
+const history=()=>{
+ const completed=matches.filter(m=>m.category_id===currentCat&&m.status==='completed');
+ const groups=vuResultGroups(completed);
+ return `<h2>🏟 Risultati</h2>${catSelector()}${groups.map(g=>`<section class="panel"><h3 style="margin:0 0 12px">${esc(g.name)} <small class="muted" style="font-weight:500">· ${g.items.length} ${g.items.length===1?'partita':'partite'}</small></h3>${g.items.map(m=>`<div class="item row"><div><strong>${esc(matchLabel(m))}</strong><small>${esc(dateIt(m.match_date))} · ${esc(m.match_type)} · Mister: ${esc(matchCoachName(m))}</small></div><button class="btn alt sm" data-action="view-match" data-id="${m.id}">Apri</button></div>`).join('')}</section>`).join('')||'<section class="panel"><p class="empty">Nessuna partita conclusa.</p></section>'}<div id="historydetail"></div>`;
+};
 const isTournament=m=>m.match_type==='TORNEO';
 const vuBandsDefault=['PLATINO','ORO','ARGENTO','BRONZO'];
 const vuBandsFor=m=>Array.isArray(m.tournament_bands)&&m.tournament_bands.length?m.tournament_bands:[];
