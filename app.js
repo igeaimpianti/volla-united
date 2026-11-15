@@ -1125,7 +1125,7 @@ async function adminCall(body){const {data:{session}}=await sb.auth.getSession()
 
 const fmtItalian=d=>d?d.split('-').reverse().join('/') : '';
 function usesRegionalDistinta(m){
- return /^(2010|2011|2012|2013) REGIONALI$/.test(upper(cats.find(c=>c.id===m.category_id)?.name||'').trim());
+ return /^(?:(?:2010|2011|2012|2013) REGIONALI|JUNIORS|JUNIORES)$/.test(upper(cats.find(c=>c.id===m.category_id)?.name||'').trim());
 }
 function distintaForm(m){
  const values={heading:'VOLLA UNITED - '+(m.opponent||''),competition:m.match_type||'',place:m.field_name||'',date:m.match_date||'',time:(m.kick_off_time||'').slice(0,5),assistant:'',assistant_doc:'',accompanying:m.dirigente_text||'',accompanying_doc:'',referee_officer:'',referee_officer_doc:'',coach:matchCoachName(m)==='Non indicato'?'':matchCoachName(m),coach_doc:'',doctor:'',doctor_doc:'',masseur:'',masseur_doc:''};
