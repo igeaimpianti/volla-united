@@ -1059,6 +1059,7 @@ async function loadAttendance(){
 }
 const dateIt=d=>d?new Date(d+'T12:00:00').toLocaleDateString('it-IT'):'';
 const fullName=p=>`${p.last_name||''} ${p.first_name||''}`.trim();
+let vuAttendanceExportExpanded=false;
 function attendancePage(){
   const ps=players.filter(p=>p.category_id===currentCat).sort((a,b)=>fullName(a).localeCompare(fullName(b),'it'));
   const sess=sessions.find(x=>x.category_id===currentCat&&x.training_date===attendanceDate);
@@ -1091,7 +1092,7 @@ function attendancePage(){
     <p class="muted">${sess?'Allenamento già registrato: puoi aggiornare le presenze.':'Nuovo allenamento: tutti presenti; deseleziona soltanto gli assenti.'}</p>
     <div class="vu-att-live-summary" id="vu-att-live-summary" aria-live="polite"></div><div class="vu-att-list">${ps.map(p=>{const rec=rows.find(r=>r.player_id===p.id),isPresent=sess?rec?.present===true:true;return `<div class="vu-att-row"><label class="check vu-att-name"><input type="checkbox" data-attend="${esc(p.id)}" ${isPresent?'checked':''} ${!editable?'disabled':''}><span>${esc(fullName(p))}</span></label><div data-absence-fields="${esc(p.id)}" class="vu-att-reason" style="display:${isPresent?'none':'block'}"><label class="field"><span>Motivo assenza</span><select data-absence-reason="${esc(p.id)}" ${!editable?'disabled':''}><option value="">Non specificato (storico)</option>${[['salute','Salute'],['infortunio','Infortunio'],['ingiustificato','Ingiustificato'],['altro','Altro']].map(([v,l])=>`<option value="${v}" ${rec?.absence_reason===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="field" data-absence-note-wrap="${esc(p.id)}" style="display:${rec?.absence_reason==='altro'?'block':'none'};margin-top:8px"><span>Specifica il motivo</span><input data-absence-note="${esc(p.id)}" maxlength="250" value="${esc(rec?.absence_note||'')}" placeholder="Scrivi il motivo" ${!editable?'disabled':''}></label></div></div>`}).join('')||'<p class="empty">Nessun calciatore nella categoria</p>'}</div>
     ${editable?'<div class="actions"><button class="btn" id="save-attendance">💾 Salva presenze</button>'+(sess?'<button class="btn alt" id="delete-attendance-day" type="button">🗑 Elimina questo allenamento</button>':'')+'</div>':''}</section>
-    <section class="panel vu-att-export-panel"><details id="vu-att-export"><summary class="vu-att-export-head"><span>📄 <strong>ESPORTA PRESENZE</strong><small>Periodo, riepilogo e PDF</small></span><span aria-hidden="true">⌄</span></summary><div class="vu-att-export-body"><div class="fields">${field('att-from','Dal',from,'date')}${field('att-to','Al',to,'date')}
+    <section class="panel vu-att-export-panel"><details id="vu-att-export" ${vuAttendanceExportExpanded?'open':''}><summary class="vu-att-export-head"><span>📄 <strong>ESPORTA PRESENZE</strong><small>Periodo, riepilogo e PDF</small></span><span aria-hidden="true">⌄</span></summary><div class="vu-att-export-body"><div class="fields">${field('att-from','Dal',from,'date')}${field('att-to','Al',to,'date')}
     <div class="field"><label>Allievo</label><select id="att-player"><option value="">Tutti gli allievi</option>${ps.map(p=>`<option value="${esc(p.id)}" ${attendancePlayer===p.id?'selected':''}>${esc(fullName(p))}</option>`).join('')}</select></div></div>
     <div class="actions"><button class="btn alt sm" data-period="week">Settimana</button><button class="btn alt sm" data-period="month">Mese</button><button class="btn alt sm" data-period="year">Anno</button><button class="btn alt sm" data-period="all">Tutto</button></div>
     <details class="panel" style="margin:12px 0" id="training-session-list"><summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0"><span><strong>${filtered.length} allenamenti registrati nel periodo</strong><small style="display:block;margin-top:6px">Clicca per visualizzare le date e gestire gli allenamenti.</small></span><span aria-hidden="true" style="font-size:21px">⌄</span></summary><p class="muted">Le assenze si contano solo per le sessioni in cui è stata registrata una presenza o assenza per l'allievo.</p>${filtered.length?`<div class="stack">${filtered.map(t=>`<div class="item row" style="gap:12px;align-items:center;justify-content:space-between"><strong>${esc(dateIt(t.training_date))}</strong>${editable?`<button type="button" class="btn alt sm" data-remove-training="${esc(t.id)}">🗑 Elimina definitivamente</button>`:''}</div>`).join('')}</div>`:'<p class="empty">Nessun allenamento nel periodo selezionato.</p>'}${editable&&filtered.length>1?`<details style="margin-top:12px"><summary style="cursor:pointer">Elimina più allenamenti</summary><div class="stack">${filtered.map(t=>`<label class="check" style="display:flex;align-items:center;gap:10px"><input type="checkbox" data-delete-session="${esc(t.id)}"><span>${esc(dateIt(t.training_date))}</span></label>`).join('')}</div><div class="actions"><button type="button" class="btn alt" id="delete-attendance-selected">🗑 Elimina date selezionate</button></div></details>`:''}</details>
@@ -1113,6 +1114,7 @@ async function deleteTrainingSessions(ids){
   }catch(err){toast('Errore eliminazione: '+err.message)}
 }
 function bindAttendance(){
+  $('#vu-att-export')?.addEventListener('toggle',e=>{vuAttendanceExportExpanded=e.currentTarget.open});
   document.querySelectorAll('[data-remove-training]').forEach(btn=>btn.addEventListener('click',()=>{
     deleteTrainingSessions([btn.dataset.removeTraining]);
   }));
@@ -1140,7 +1142,7 @@ function bindAttendance(){
   document.querySelectorAll('[data-attend]').forEach(el=>el.addEventListener('change',()=>{updateAttendanceSummary();const panel=document.querySelector('[data-absence-fields="'+el.dataset.attend+'"]');if(panel){panel.style.display=el.checked?'none':'block';if(!el.checked){const reason=panel.querySelector('[data-absence-reason]');if(reason&&!reason.value)reason.focus()}}}));
   document.querySelectorAll('[data-absence-reason]').forEach(el=>el.addEventListener('change',()=>{const wrap=document.querySelector('[data-absence-note-wrap="'+el.dataset.absenceReason+'"]');if(wrap)wrap.style.display=el.value==='altro'?'block':'none'}));
   $('#save-attendance')?.addEventListener('click',async e=>{
-    const btn=e.currentTarget;btn.disabled=true;
+    const btn=e.currentTarget;btn.disabled=true;const oldLabel=btn.textContent;btn.textContent='⏳ Salvataggio…';
     try{
       if(!currentCat||!attendanceDate)throw Error('Seleziona categoria e data');
       const ps=players.filter(p=>p.category_id===currentCat);
@@ -1150,10 +1152,10 @@ function bindAttendance(){
       if(!sess){const created=await sb.from('training_sessions').insert({category_id:currentCat,training_date:attendanceDate,created_by:me.id}).select('id').single();if(created.error)throw created.error;sess=created.data}
       const r=await sb.from('training_attendance').upsert(data.map(x=>({...x,session_id:sess.id})),{onConflict:'session_id,player_id'});if(r.error)throw r.error;
       await loadAttendance();render();toast('Presenze salvate correttamente');
-    }catch(err){toast('Errore: '+err.message);btn.disabled=false}
+    }catch(err){toast('Errore: '+err.message);btn.disabled=false;btn.textContent=oldLabel}
   });
   $('#print-attendance')?.addEventListener('click',async e=>{
-    const btn=e.currentTarget;btn.disabled=true;
+    const btn=e.currentTarget;btn.disabled=true;const oldLabel=btn.textContent;btn.textContent='⏳ Generazione PDF…';
     try{
       const from=val('att-from'),to=val('att-to');
       if(!from||!to||from>to)throw Error('Intervallo date non valido');
@@ -1220,7 +1222,7 @@ function bindAttendance(){
         toast('PDF scaricato: puoi allegarlo come documento');
       }
     }catch(err){console.error(err);toast('Errore PDF: '+err.message)}
-    finally{if(btn.isConnected)btn.disabled=false}
+    finally{if(btn.isConnected){btn.disabled=false;btn.textContent=oldLabel}}
   });
 }
 
