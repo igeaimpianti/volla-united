@@ -616,7 +616,7 @@ function vuBindStandaloneDistinta(){
    return `<input id="df-ci-${esc(id)}" value="${esc(detailOf(id).identity_number||'')}"><input id="df-tess-${esc(id)}" value="${esc(playerFigcCard(p))}"><input id="df-figc-${esc(id)}" value="${esc(playerFigc(p))}">`;
   }).join('');
   const match={category_id:vuDistintaCategory,player_ids:vuDistintaIds.slice(),match_date:vuDistintaMode==='filled'?val('df-date'):'',opponent:vuDistintaMode==='filled'?val('df-opponent'):''};
-  await generateDistinta(match,{model:vuDistintaModel});
+  await generateDistinta(match,{model:vuDistintaModel,standalone:true});
  }finally{if(btn&&btn.isConnected)btn.textContent=originalLabel||'Genera PDF distinta'}
  });
 }
@@ -1279,6 +1279,8 @@ async function generateDistinta(m, options={}){
  writeCell(value('place'),175,342,185,207,8.5);
  writeCell(fmtItalian(value('date')),347,458,185,207,8.5);
  writeCell(value('time'),464,580,185,207,8.5);
+ // In modalità Distinte amministratore stampa l'avversario nella fascia libera sopra la tabella.
+ if(options.standalone&&value('opponent'))writeCell('AVVERSARIO: '+value('opponent'),16,579,210,226,8);
  const ids=m.player_ids||[];
  if(ids.length>20)throw Error('Il modello contiene 20 righe: riduci i convocati prima di esportare');
  ids.forEach((id,i)=>{
