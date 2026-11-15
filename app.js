@@ -696,7 +696,7 @@ const sortPlayers=(a,b)=>{
   return rank(a)-rank(b) || (a.last_name||'').localeCompare(b.last_name||'','it',{sensitivity:'base'}) || (a.first_name||'').localeCompare(b.first_name||'','it',{sensitivity:'base'});
 };
 
-const playerForm=p=>`<form id="playerformreal" class="panel"><h3>${p?'Modifica':'Nuovo'} calciatore</h3><div class="fields">${p&&me?.role==='admin'?`<div class="field"><label for="player-category">GRUPPO DEL CALCIATORE</label><select id="player-category">${cats.map(c=>`<option value="${esc(c.id)}" ${c.id===p.category_id?'selected':''}>${esc(upper(c.name))}</option>`).join('')}</select></div>`:''}${field('firstname','Nome',p?.first_name)}${field('surname','Cognome',p?.last_name)}${field('birthday','Data di nascita',p?.birth_date,'date')}${field('shirt','Numero maglia',p?.jersey_number,'number')}<div class="field"><label>Ruolo principale</label><select id="role">${roles.map(r=>`<option ${p?.primary_role===r?'selected':''}>${r}</option>`).join('')}</select></div><div class="field"><label>Ruolo secondario</label><select id="role2"><option value="">Nessuno</option>${roles.map(r=>`<option ${p?.secondary_role===r?'selected':''}>${r}</option>`).join('')}</select></div><div class="field"><label>Qualifica</label><select id="teamrole">${[['none','Calciatore'],['captain','Capitano (CAP)'],['vice','Vicecapitano (V.CAP)']].map(([v,t])=>`<option value="${v}" ${((p&&detailOf(p.id).team_role)||'none')===v?'selected':''}>${t}</option>`).join('')}</select></div>${field('identitynumber','Numero carta identità',p?detailOf(p.id).identity_number:'')}${field('figcnumber','Matricola FIGC',p?playerFigc(p):'')}${field('figccardnumber','Tessera FIGC',p?playerFigcCard(p):'')}${field('fiscalcode','Codice fiscale',p?(p.fiscal_code||p.codice_fiscale||''):'')}${p?`<div class="field"><label>Foto del calciatore</label>${photoOf(p.id)?`<img src="${esc(photoOf(p.id))}" alt="Foto profilo" style="max-height:150px;max-width:100%;object-fit:contain">`:''}<input type="file" id="playerphoto" accept="image/jpeg,image/png,image/webp"><p class="muted">La foto caricata sarà visualizzata nel profilo del bambino e nell’area genitori.</p></div>`:''}</div><div class="actions"><button class="btn">Salva calciatore</button><button type="button" class="btn alt" data-action="close-player">Annulla</button></div></form>`;
+const playerForm=p=>`<form id="playerformreal" class="panel"><h3>${p?'Modifica':'Nuovo'} calciatore</h3><div class="fields">${p&&me?.role==='admin'?`<div class="field"><label for="player-category">GRUPPO DEL CALCIATORE</label><select id="player-category">${cats.map(c=>`<option value="${esc(c.id)}" ${c.id===p.category_id?'selected':''}>${esc(upper(c.name))}</option>`).join('')}</select></div>`:''}${field('firstname','Nome',p?.first_name)}${field('surname','Cognome',p?.last_name)}${field('birthday','Data di nascita',p?.birth_date,'date')}${field('birthplace','Luogo di nascita',p?.birth_place)}${field('shirt','Numero maglia',p?.jersey_number,'number')}<div class="field"><label>Ruolo principale</label><select id="role">${roles.map(r=>`<option ${p?.primary_role===r?'selected':''}>${r}</option>`).join('')}</select></div><div class="field"><label>Ruolo secondario</label><select id="role2"><option value="">Nessuno</option>${roles.map(r=>`<option ${p?.secondary_role===r?'selected':''}>${r}</option>`).join('')}</select></div><div class="field"><label>Qualifica</label><select id="teamrole">${[['none','Calciatore'],['captain','Capitano (CAP)'],['vice','Vicecapitano (V.CAP)']].map(([v,t])=>`<option value="${v}" ${((p&&detailOf(p.id).team_role)||'none')===v?'selected':''}>${t}</option>`).join('')}</select></div>${field('identitynumber','Numero carta identità',p?detailOf(p.id).identity_number:'')}${field('figcnumber','Matricola FIGC',p?playerFigc(p):'')}${field('figccardnumber','Tessera FIGC',p?playerFigcCard(p):'')}${field('fiscalcode','Codice fiscale',p?(p.fiscal_code||p.codice_fiscale||''):'')}${p?`<div class="field"><label>Foto del calciatore</label>${photoOf(p.id)?`<img src="${esc(photoOf(p.id))}" alt="Foto profilo" style="max-height:150px;max-width:100%;object-fit:contain">`:''}<input type="file" id="playerphoto" accept="image/jpeg,image/png,image/webp"><p class="muted">La foto caricata sarà visualizzata nel profilo del bambino e nell’area genitori.</p></div>`:''}</div><div class="actions"><button class="btn">Salva calciatore</button><button type="button" class="btn alt" data-action="close-player">Annulla</button></div></form>`;
 const vuYear=c=>Number(String(c?.name||'').match(/^\d{4}/)?.[0]);
 const vuExternalLimit=5;
 function vuExternalGroupAllowed(categoryId){
@@ -1275,30 +1275,66 @@ async function exportRosterPdf(){
  if(!list.length)throw Error('Nessun calciatore presente nel gruppo');
  const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
- const page=pdf.addPage([841.89,595.28]),W=page.getWidth(),H=page.getHeight();
- const ink=rgb(.12,.12,.12),red=rgb(.63,.07,.13),pale=rgb(.95,.95,.95),white=rgb(1,1,1);
+ const W=841.89,H=595.28,margin=18,tableW=W-2*margin,top=H-114,bottom=42;
+ const ink=rgb(.12,.12,.12),red=rgb(.63,.07,.13),pale=rgb(.94,.94,.94),white=rgb(1,1,1);
  const clean=v=>String(v??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
- const columns=['Calciatore','N.','Nascita','Ruolo','Qualifica','Carta identita','Matricola FIGC'];
- const getDetail=p=>details.get(p.id)||{};
- const rows=list.map(p=>{const d=getDetail(p);return [fullName(p),p.jersey_number??'-',p.birth_date?fmtItalian(p.birth_date):'-',p.primary_role||'-',d.team_role==='captain'?'CAP':d.team_role==='vice'?'VICE':'-',d.identity_number||'-',playerFigc(p)||'-'].map(String)});
- const margin=20,tableW=W-2*margin,top=H-116,bottom=40,availableH=top-bottom;
- const weights=columns.map((c,i)=>i===0?2.6:c==='Ruolo'?2.1:Math.max(.85,Math.min(1.8,c.length/10)));
- const sum=weights.reduce((x,y)=>x+y,0),widths=weights.map(x=>tableW*x/sum);
- const wrap=(value,width,size,face)=>{const words=clean(value).split(/\s+/),out=[];let line='';for(const word of words){let next=line?line+' '+word:word;if(face.widthOfTextAtSize(next,size)<=width-6){line=next;continue}if(line){out.push(line);line=''}let part='';for(const ch of word){if(face.widthOfTextAtSize(part+ch,size)>width-6&&part){out.push(part);part=''}part+=ch}line=part}if(line)out.push(line);return out.length?out:['-']};
- // Riduce proporzionalmente il carattere fino a far entrare tutti i dati in una sola pagina.
- let size=9,heights=[];
- for(;size>=2.5;size-=.25){heights=rows.map(r=>Math.max(1,...r.map((v,i)=>wrap(v,widths[i],size,font).length))*size*1.2+5);const headH=Math.max(16,size*2.4);if(heights.reduce((a,b)=>a+b,headH)<=availableH)break}
- if(size<2.5)throw Error('Troppi dati per una pagina A4 leggibile. Riduci i campi oppure usa un formato piu grande.');
+ const value=v=>v===null||v===undefined?'':String(v).trim();
+ const columns=['Calciatore','N.','Data nascita','Luogo nascita','Codice fiscale','Ruolo','Qualifica','Carta identita','Tessera FIGC','Matricola FIGC'];
+ const widths=[132,25,62,78,92,82,47,82,87,88];
+ const scale=tableW/widths.reduce((a,b)=>a+b,0);widths.forEach((v,i)=>widths[i]=v*scale);
+ const rows=list.map(p=>{const d=details.get(p.id)||{};return [
+   fullName(p),value(p.jersey_number),p.birth_date?fmtItalian(p.birth_date):'',value(p.birth_place),
+   value(p.fiscal_code||p.codice_fiscale),value(p.primary_role),
+   d.team_role==='captain'?'CAP':d.team_role==='vice'?'VICE':'',
+   value(d.identity_number),value(d.figc_card_number),value(d.figc_number||p.figc_number)
+ ]});
+ const size=7.8,headH=26,lineH=size*1.28;
+ const wrap=(txt,width,face=font,fontSize=size)=>{
+   const words=clean(txt).split(/\s+/).filter(Boolean);if(!words.length)return [];
+   const lines=[];let line='';
+   for(const word of words){
+     const next=line?line+' '+word:word;
+     if(face.widthOfTextAtSize(next,fontSize)<=width-6){line=next;continue}
+     if(line){lines.push(line);line=''}
+     let fragment='';
+     for(const ch of word){if(fragment&&face.widthOfTextAtSize(fragment+ch,fontSize)>width-6){lines.push(fragment);fragment=''}fragment+=ch}
+     line=fragment;
+   }
+   if(line)lines.push(line);
+   return lines;
+ };
+ const heights=rows.map(r=>Math.max(21,...r.map((v,i)=>wrap(v,widths[i]).length*lineH+8)));
  let logo=null;try{const r=await fetch('./logo.png',{cache:'no-store'});if(r.ok)logo=await pdf.embedPng(await r.arrayBuffer())}catch(e){console.warn('Logo PDF:',e)}
- if(logo){const sc=Math.min(66/logo.width,66/logo.height);page.drawImage(logo,{x:margin,y:H-82,width:logo.width*sc,height:logo.height*sc})}
- const title='VOLLA UNITED';page.drawText(title,{x:W/2-bold.widthOfTextAtSize(title,19)/2,y:H-47,size:19,font:bold,color:red});
- const sub=clean('LISTA COMPLETA CALCIATORI - '+cat.name).toUpperCase();const subSize=Math.min(12,(W-180)/bold.widthOfTextAtSize(sub,1));page.drawText(sub,{x:W/2-bold.widthOfTextAtSize(sub,subSize)/2,y:H-66,size:subSize,font:bold,color:ink});
- const info=`Totale calciatori: ${list.length}   |   ${new Date().toLocaleDateString('it-IT')}`;page.drawText(clean(info),{x:W/2-font.widthOfTextAtSize(clean(info),9)/2,y:H-85,size:9,font,color:ink});
- const drawCell=(txt,x,y,w,h,face,fill)=>{page.drawRectangle({x,y,width:w,height:h,borderWidth:.35,borderColor:rgb(.65,.65,.65),color:fill});const lines=wrap(txt,w,size,face),lineH=size*1.2;let ty=y+h-3-size;for(const ln of lines){page.drawText(ln,{x:x+3,y:ty,size,font:face,color:ink});ty-=lineH}};
- const headH=Math.max(16,size*2.4);let y=top-headH,x=margin;
- columns.forEach((c,i)=>{drawCell(c,x,y,widths[i],headH,bold,pale);x+=widths[i]});
- rows.forEach((r,j)=>{const h=heights[j];y-=h;x=margin;r.forEach((v,i)=>{drawCell(v,x,y,widths[i],h,font,j%2?white:rgb(.98,.98,.98));x+=widths[i]})});
- page.drawText(clean(`Volla United - ${cat.name} | Documento riservato - dati personali di minori`),{x:margin,y:18,size:7,font,color:ink});
+ let page,y,pageNumber=0;
+ const drawCell=(txt,x,base,w,h,face,fill,header=false)=>{
+   page.drawRectangle({x,y:base,width:w,height:h,borderWidth:.35,borderColor:rgb(.68,.68,.68),color:fill});
+   const lines=wrap(txt,w,face,header?7.2:size),fs=header?7.2:size,lh=header?9.3:lineH;
+   const textHeight=lines.length?fs+(lines.length-1)*lh:0;
+   let ty=base+(h+textHeight)/2-fs;
+   for(const ln of lines){page.drawText(ln,{x:x+3,y:ty,size:fs,font:face,color:ink});ty-=lh}
+ };
+ const newPage=()=>{
+   page=pdf.addPage([W,H]);pageNumber++;y=top;
+   if(logo){const sc=Math.min(66/logo.width,66/logo.height);page.drawImage(logo,{x:margin,y:H-84,width:logo.width*sc,height:logo.height*sc})}
+   const title='VOLLA UNITED';page.drawText(title,{x:(W-bold.widthOfTextAtSize(title,19))/2,y:H-47,size:19,font:bold,color:red});
+   const sub=clean('LISTA COMPLETA CALCIATORI - '+cat.name).toUpperCase();
+   const subSize=Math.min(12,(W-180)/bold.widthOfTextAtSize(sub,1));
+   page.drawText(sub,{x:(W-bold.widthOfTextAtSize(sub,subSize))/2,y:H-66,size:subSize,font:bold,color:ink});
+   const info=clean('Totale calciatori: '+list.length+'   |   '+new Date().toLocaleDateString('it-IT'));
+   page.drawText(info,{x:(W-font.widthOfTextAtSize(info,9))/2,y:H-85,size:9,font,color:ink});
+   y-=headH;let x=margin;columns.forEach((c,i)=>{drawCell(c,x,y,widths[i],headH,bold,pale,true);x+=widths[i]});
+ };
+ newPage();
+ rows.forEach((r,j)=>{
+   const h=heights[j];if(y-h<bottom)newPage();
+   y-=h;let x=margin;r.forEach((v,i)=>{drawCell(v,x,y,widths[i],h,font,j%2?white:rgb(.985,.985,.985));x+=widths[i]});
+ });
+ const pageCount=pdf.getPageCount();
+ for(let i=0;i<pageCount;i++){
+   const p=pdf.getPage(i),foot=clean('Volla United - '+cat.name+' | Riservato: dati personali di minori');
+   p.drawText(foot,{x:margin,y:19,size:7,font,color:ink});
+   const no=(i+1)+' / '+pageCount;p.drawText(no,{x:W-margin-font.widthOfTextAtSize(no,7),y:19,size:7,font,color:ink});
+ }
  const bytes=await pdf.save(),filename='Lista_Calciatori_'+cat.name.replace(/[^a-zA-Z0-9_-]+/g,'_')+'.pdf',file=new File([bytes],filename,{type:'application/pdf'});
  if(navigator.share&&navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file]})}catch(e){if(e.name!=='AbortError')throw e}}
  else{const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
@@ -1327,7 +1363,7 @@ function bindPlayer(){ const cf=$('#fiscalcode');if(cf){cf.maxLength=16;cf.autoc
  const fiscalCode=upper(val('fiscalcode')).replace(/\s+/g,'');
  if(fiscalCode&&!/^[A-Z0-9]{16}$/.test(fiscalCode))throw Error('Il codice fiscale deve contenere 16 caratteri alfanumerici');
  if(fiscalCode&&players.some(p=>p.id!==current&&upper(String(p.fiscal_code||p.codice_fiscale||'').trim())===fiscalCode))throw Error('Codice fiscale già associato a un altro calciatore');
- const obj={category_id:targetCat,first_name:val('firstname'),last_name:val('surname'),birth_date:val('birthday')||null,jersey_number:val('shirt')?Number(val('shirt')):null,primary_role:val('role'),secondary_role:val('role2')||null,fiscal_code:fiscalCode||null};
+ const obj={category_id:targetCat,first_name:val('firstname'),last_name:val('surname'),birth_date:val('birthday')||null,birth_place:val('birthplace')||null,jersey_number:val('shirt')?Number(val('shirt')):null,primary_role:val('role'),secondary_role:val('role2')||null,fiscal_code:fiscalCode||null};
  if(me?.role==='coach'){if(current)throw Error('La modifica dei dati è riservata all’Admin');const {error}=await sb.rpc('submit_player_request',{p_category_id:targetCat,p_request_type:'add',p_player_id:null,p_player_data:obj});if(error)throw error;window._editPlayer=null;await vuLoadPlayerRequests();render();toast('Richiesta inviata all’Admin');return;}
  const q=current?sb.from('players').update(obj).eq('id',current):sb.from('players').insert(obj);
  const r=await q.select('id').single();if(r.error)throw r.error;
