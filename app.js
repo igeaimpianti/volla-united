@@ -1161,58 +1161,51 @@ function bindAttendance(){
       const dates=sessions.filter(x=>x.category_id===currentCat&&x.training_date>=from&&x.training_date<=to).sort((a,b)=>a.training_date.localeCompare(b.training_date));
       if(!ps.length)throw Error('Nessun calciatore da esportare');
       const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
+      
       const pdf=await PDFDocument.create();
-      const page=pdf.addPage([595.28,841.89]); // A4 verticale, sempre una pagina
-      const W=page.getWidth(),H=page.getHeight();
       const regular=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
-      const ink=rgb(.12,.12,.12),red=rgb(.66,.07,.14),light=rgb(.94,.94,.94),white=rgb(1,1,1);
+      const ink=rgb(.12,.12,.12),red=rgb(.66,.07,.14),light=rgb(.94,.94,.94);
       const clean=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7e]/g,' ').trim();
-      const write=(s,x,y,size=9,font=regular,color=ink)=>page.drawText(clean(s),{x,y,size,font,color});
-      const center=(s,y,size=10,font=regular,color=ink)=>write(s,(W-font.widthOfTextAtSize(clean(s),size))/2,y,size,font,color);
-      // Logo ufficiale della PWA, caricato dalla stessa cartella di app.js.
-      try{
-        const response=await fetch('./logo.png',{cache:'no-store'});
-        if(response.ok){
-          const logo=await pdf.embedPng(await response.arrayBuffer());
-          const scale=Math.min(78/logo.width,78/logo.height);
-          const lw=logo.width*scale,lh=logo.height*scale;
-          page.drawImage(logo,{x:(W-lw)/2,y:H-22-lh,width:lw,height:lh});
-        }
-      }catch(err){console.warn('Logo PDF non disponibile:',err)}
-      center('VOLLA UNITED',H-116,18,bold,red);
-      center('REGISTRO PRESENZE ALLENAMENTI',H-133,11,bold);
-      center(`Categoria: ${selectedCategory()?.name||''}     Dal ${dateIt(from)} al ${dateIt(to)}`,H-149,9);
-      center(`Allenamenti nel periodo: ${dates.length}`,H-163,8);
-      const margin=29,tableW=W-margin*2,top=H-184,bottom=55;
-      const nameW=166,summaryW=102,available=tableW-nameW-summaryW;
-      const dateW=dates.length?available/dates.length:0;
-      const widths=[nameW,...dates.map(()=>dateW),34,34,34];
-      const rowH=Math.min(24,(top-bottom)/(ps.length+1));
-      const fontSize=Math.max(5.5,Math.min(9,rowH*.43));
-      const dateFont=Math.max(3,Math.min(7,dateW*.34));
-      const fit=(value,width,size,font=regular)=>{
-        let text=clean(value);while(text&&font.widthOfTextAtSize(text,size)>width-5)text=text.slice(0,-1);
-        return text;
-      };
-      const cell=(value,x,y,width,fill=false,size=fontSize,font=regular,align='left')=>{
-        page.drawRectangle({x,y,width,height:rowH,borderColor:ink,borderWidth:.45,...(fill?{color:light}:{})});
-        const text=fit(value,width,size,font);
-        const tx=align==='center'?x+(width-font.widthOfTextAtSize(text,size))/2:x+3;
-        write(text,tx,y+(rowH-size)/2+1,size,font);
-      };
+      const dateChunks=[];for(let i=0;i<dates.length;i+=12)dateChunks.push(dates.slice(i,i+12));
+      if(!dateChunks.length)dateChunks.push([]);
+      const playerChunks=[];for(let i=0;i<ps.length;i+=22)playerChunks.push(ps.slice(i,i+22));
+      const headerLogo=await (async()=>{try{const res=await fetch('./logo.png',{cache:'no-store'});return res.ok?await pdf.embedPng(await res.arrayBuffer()):null}catch{return null}})();
       const att=(p,t)=>{const a=attendance.find(x=>x.session_id===t.id&&x.player_id===p.id);return a?(a.present?'P':'A'):'-'};
-      const headers=['CALCIATORE',...dates.map(t=>dateIt(t.training_date).slice(0,5)),'P','A','%'];
-      let x=margin;
-      headers.forEach((h,i)=>{cell(h,x,top-rowH,widths[i],true,i===0?8:i<=dates.length?dateFont:8,bold,i===0?'left':'center');x+=widths[i]});
-      ps.forEach((p,index)=>{
-        const results=dates.map(t=>att(p,t));
-        const P=results.filter(v=>v==='P').length,A=results.filter(v=>v==='A').length;
-        const values=[fullName(p),...results,P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
-        const y=top-rowH*(index+2);let cx=margin;
-        values.forEach((v,i)=>{cell(v,cx,y,widths[i],false,i===0?Math.min(8.5,fontSize):Math.min(8,fontSize),regular,i===0?'left':'center');cx+=widths[i]});
-      });
-      write('P = Presente     A = Assente     - = Non registrato',margin,32,8);
-      write(`Volla United  |  ${dateIt(from)} - ${dateIt(to)}`,margin,19,7);
+      const totalPages=dateChunks.length*playerChunks.length;
+      let pageNumber=0;
+      for(const datesOnPage of dateChunks){
+        for(const playersOnPage of playerChunks){
+          const page=pdf.addPage([595.28,841.89]),W=page.getWidth(),H=page.getHeight();
+          pageNumber++;
+          const write=(value,x,y,size=9,font=regular,color=ink)=>page.drawText(clean(value),{x,y,size,font,color});
+          const center=(value,y,size=10,font=regular,color=ink)=>write(value,(W-font.widthOfTextAtSize(clean(value),size))/2,y,size,font,color);
+          if(headerLogo){const scale=Math.min(64/headerLogo.width,64/headerLogo.height);const lw=headerLogo.width*scale,lh=headerLogo.height*scale;page.drawImage(headerLogo,{x:(W-lw)/2,y:H-16-lh,width:lw,height:lh})}
+          center('VOLLA UNITED',H-98,17,bold,red);
+          center('REGISTRO PRESENZE ALLENAMENTI',H-116,11,bold);
+          center('Categoria: '+(selectedCategory()?.name||'')+' | '+dateIt(from)+' - '+dateIt(to),H-134,8);
+          center('Allenamenti totali: '+dates.length+' | Pagina '+pageNumber+' di '+totalPages,H-150,8);
+          const margin=25,top=H-174,rowH=25,nameW=169,summaryW=96,available=W-2*margin-nameW-summaryW;
+          const dateW=datesOnPage.length?available/datesOnPage.length:available;
+          const widths=[nameW,...datesOnPage.map(()=>dateW),32,32,32];
+          const cell=(value,x,y,width,fill=false,size=8,font=regular,align='left')=>{
+            page.drawRectangle({x,y,width,height:rowH,borderColor:ink,borderWidth:.4,...(fill?{color:light}:{})});
+            let txt=clean(value);while(txt&&font.widthOfTextAtSize(txt,size)>width-6)txt=txt.slice(0,-1);
+            write(txt,align==='center'?x+(width-font.widthOfTextAtSize(txt,size))/2:x+3,y+(rowH-size)/2+1,size,font);
+          };
+          const headers=['CALCIATORE',...datesOnPage.map(t=>dateIt(t.training_date).slice(0,5)),'P','A','%'];
+          let cx=margin;headers.forEach((h,i)=>{cell(h,cx,top-rowH,widths[i],true,i===0?8:7.3,bold,i===0?'left':'center');cx+=widths[i]});
+          playersOnPage.forEach((p,index)=>{
+            const visible=datesOnPage.map(t=>att(p,t));
+            const totals=dates.map(t=>att(p,t)),P=totals.filter(v=>v==='P').length,A=totals.filter(v=>v==='A').length;
+            const values=[fullName(p),...visible,P,A,P+A?Math.round(P*100/(P+A))+'%':'0%'];
+            let x=margin;const y=top-rowH*(index+2);
+            values.forEach((v,i)=>{cell(v,x,y,widths[i],false,i===0?8:8,regular,i===0?'left':'center');x+=widths[i]});
+          });
+          write('P = Presente     A = Assente     - = Non registrato',margin,43,8);
+          write('Percentuali e totali calcolati su tutto il periodo selezionato',margin,29,7);
+          write('Volla United Academy | Pagina '+pageNumber+'/'+totalPages,margin,16,7);
+        }
+      }
       const bytes=await pdf.save();
       const filename=`Presenze_Volla_United_${from}_${to}.pdf`;
       const file=new File([bytes],filename,{type:'application/pdf'});
