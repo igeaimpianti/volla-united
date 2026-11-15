@@ -734,7 +734,15 @@ function vuDashDetail(kind){
     body+='</div>';
     window.__vuDashPlayerSearchIndex=searchIndex;
   }
- if(kind==='matches'){title='🏟️ PARTITE DISPUTATE';body=games.map(game).join('')}
+ if(kind==='matches'){
+   title='🏟️ PARTITE DISPUTATE';
+   const groups=cats.filter(c=>ids.includes(c.id)&&games.some(m=>m.category_id===c.id)).sort((a,b)=>a.name.localeCompare(b.name,'it',{numeric:true}));
+   body=`<div class="vu-detail-summary">${games.length} PARTITE DISPUTATE · ${groups.length} CATEGORIE · SELEZIONA UNA CATEGORIA PER VEDERE LE PARTITE</div>`;
+   body+=groups.map(c=>{
+     const played=games.filter(m=>m.category_id===c.id);
+     return `<details class="vu-roster-group vu-match-category"><summary>⚽ ${esc(upper(c.name))}<span>${played.length} ${played.length===1?'PARTITA':'PARTITE'} ▾</span></summary><div class="vu-roster-members">${played.map(game).join('')}</div></details>`;
+   }).join('');
+ }
  if(kind==='wins'){title='🏆 PARTITE VINTE';body=games.filter(m=>vuDashScore(m)[0]>vuDashScore(m)[1]).map(game).join('')}
  if(kind==='tournaments'){title='🏆 TORNEI DISPUTATI';body=tournaments.map(tour).join('')}
  if(kind==='first'){title='🥇 PRIMI POSTI';body=tournaments.filter(m=>Number(m.tournament_position)===1).map(tour).join('')}
