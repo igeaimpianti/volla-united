@@ -64,9 +64,10 @@ function upcomingWeekend(){
 }
 function calendarCompetitionBlock(name,rows){
  const isFIGC=name.startsWith('FIGC');
- const canSplit=(name==='NEXTGEN'||name==='SPORT & FUN'||isFIGC)&&rows.length>0&&rows.every(f=>Number.isInteger(Number(f.round_number))&&Number(f.round_number)>=1&&Number(f.round_number)<=(isFIGC?22:18));
+ const isAudax=name.startsWith('RAGAZZI D’ORO');
+ const canSplit=(name==='NEXTGEN'||name==='SPORT & FUN'||isFIGC||isAudax)&&rows.length>0&&rows.every(f=>Number.isInteger(Number(f.round_number))&&Number(f.round_number)>=1&&Number(f.round_number)<=(isFIGC?22:18));
  const maxRound=Math.max(...rows.map(f=>Number(f.round_number)));
- const half=isFIGC?(name.includes('GIRONE 19')?9:11):maxRound>14?9:7;
+ const half=isFIGC?(name.includes('GIRONE 19')?9:11):isAudax?7:maxRound>14?9:7;
  const section=(title,items)=>items.length?'<section class="vu-cal-round"><h3>'+safe(title)+'</h3>'+items.slice().sort((a,b)=>Number(a.round_number)-Number(b.round_number)).map(f=>'<div class="vu-cal-round-fixture"><div class="vu-cal-round-number">'+safe(f.round_number)+'ª GIORNATA</div>'+fixtureRow(f)+'</div>').join('')+'</section>':'';
  return '<div class="vu-cal-league">'+(canSplit?
  section('GIRONE DI ANDATA',rows.filter(f=>Number(f.round_number)<=half))+
