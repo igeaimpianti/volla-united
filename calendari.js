@@ -4,8 +4,8 @@ const days = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì'
 const dateLocal = s => new Date(String(s).slice(0,10)+'T12:00:00');
 const niceDate = s => {const d=dateLocal(s);return days[d.getDay()]+' '+new Intl.DateTimeFormat('it-IT',{day:'numeric',month:'long',year:'numeric'}).format(d);};
 const hm = s => String(s || '').slice(0,5) || 'Da definire';
-const weekEnd = s => {const d=dateLocal(s);d.setDate(d.getDate() + (6-d.getDay()+7)%7);return d.toLocaleDateString('en-CA');};
-const tomorrowProofToday = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const weekEnd = s => {const d=dateLocal(s);d.setDate(d.getDate() + (d.getDay()===0?-1:(6-d.getDay()+7)%7));return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
+const tomorrowProofToday = () => {const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Rome',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));return p.year+'-'+p.month+'-'+p.day;};
 const order = (a,b)=>String(a.match_date).localeCompare(String(b.match_date))||String(a.kick_off_time||'').localeCompare(String(b.kick_off_time||''))||String(a.category_name).localeCompare(String(b.category_name),'it');
 let selectedCategory='all',selectedWeekend='all';
 export const isCalendarUser = role => role === 'calendari';
@@ -19,7 +19,7 @@ function fixtureRow(f){
  const home=f.home_team==='VOLLA UNITED',opponent=home?f.away_team:f.home_team;
  return `<article class="vu-calendar-game">
   <div class="vu-calendar-time"><strong>${safe(hm(f.kick_off_time))}</strong><small>${safe(niceDate(f.match_date))}</small></div>
-  <div class="vu-calendar-game-main"><span class="vu-calendar-category">UNDER ${safe(f.category_name)}</span><strong>VOLLA UNITED <span class="vu-calendar-vs">vs</span> ${safe(opponent)}</strong><small>${home?'🏠 CASA':'🚌 TRASFERTA'}</small></div>
+  <div class="vu-calendar-game-main"><span class="vu-calendar-category">UNDER ${safe(f.category_name)}</span><strong>${home?'VOLLA UNITED':safe(opponent)} <span class="vu-calendar-vs">vs</span> ${home?safe(opponent):'VOLLA UNITED'}</strong><small>${home?'🏠 CASA':'🚌 TRASFERTA'}</small></div>
   <span class="vu-calendar-place ${home?'at-home':'away'}">${home?'CASA':'FUORI'}</span>
  </article>`;
 }
