@@ -10,7 +10,7 @@ const order = (a,b)=>String(a.match_date).localeCompare(String(b.match_date))||S
 let selectedCategory='all',selectedWeekend='all';
 export const isCalendarUser = role => role === 'calendari';
 export async function getCalendarFixtures(sb,cats) {
- const {data,error}=await sb.from('external_calendar_fixtures').select('*').eq('provider','NEXTGEN').order('match_date',{ascending:true}).order('kick_off_time',{ascending:true});
+ const {data,error}=await sb.from('external_calendar_fixtures').select('*').order('match_date',{ascending:true}).order('kick_off_time',{ascending:true});
  if(error)throw error;
  const names=new Map(cats.map(c=>[c.id,c.name]));
  return (data||[]).map(f=>({...f,category_name:names.get(f.category_id)||'Categoria'})).sort(order);
@@ -43,21 +43,41 @@ export function weekendDashboard(fixtures,openPage=true){
  const weeks=groupWeekends(next).slice(0,4);
  return `${calendarStyles()}<section class="vu-calendar-dashboard"><div class="vu-cal-summary-heading"><h2>📅 PROSSIME PARTITE · FINE SETTIMANA</h2>${openPage?'<button data-page="calendari" type="button">TUTTO IL CALENDARIO ›</button>':''}</div>${weeks.length?weeks.map(([k,v])=>weekBlock(k,v)).join(''):'<div class="vu-calendar-week vu-cal-empty">Nessuna partita futura nei calendari disponibili.</div>'}</section>`;
 }
+
+const categoryLabels=['2016 Rossa','2016 Nera','2017','2018','2019','2020','2021/22'];
+let activeCalendarCategory=null;
+function categoryFixtures(fixtures,category){return fixtures.filter(f=>String(f.category_name||'').toLowerCase()===category.toLowerCase());}
+function competitionOf(f){return String(f.provider||'CAMPIONATO').toUpperCase();}
+function competitionBlocks(fixtures){
+ const leagues=new Map();
+ fixtures.forEach(f=>{const name=competitionOf(f);if(!leagues.has(name))leagues.set(name,[]);leagues.get(name).push(f);});
+ return [...leagues.entries()].sort((a,b)=>a[0].localeCompare(b[0],'it')).map(([name,rows])=>'<section class="vu-cal-league"><div class="vu-cal-league-head"><h3>'+safe(name)+'</h3><span>'+rows.length+' partite</span></div>'+rows.sort(order).map(fixtureRow).join('')+'</section>').join('');
+}
 export function calendarPage(fixtures){
- const categories=[...new Set(fixtures.map(f=>f.category_name))].sort((a,b)=>a.localeCompare(b,'it',{numeric:true}));
- const filtered=fixtures.filter(f=>(selectedCategory==='all'||f.category_name===selectedCategory)&&(selectedWeekend==='all'||weekEnd(f.match_date)===selectedWeekend));
- const weekends=groupWeekends(fixtures);
- const available=weekends.map(([k])=>k);
- if(selectedWeekend!=='all'&&!available.includes(selectedWeekend))selectedWeekend='all';
- return `${calendarStyles()}<div class="vu-cal"><div class="vu-cal-hero"><small>VOLLA UNITED ACADEMY · STAGIONE 2026/27</small><h2>Calendari</h2><p>Tutte le partite NextGen delle categorie 2017, 2018 e 2019. Solo data, ora, avversario e casa/trasferta.</p></div>
- <div class="vu-calendar-filter"><div><label for="vu-cal-category">Categoria</label><select id="vu-cal-category"><option value="all">Tutte le categorie</option>${categories.map(c=>`<option value="${safe(c)}" ${selectedCategory===c?'selected':''}>${safe(c)}</option>`).join('')}</select></div><div><label for="vu-cal-week">Fine settimana</label><select id="vu-cal-week"><option value="all">Tutta la stagione</option>${weekends.map(([w])=>`<option value="${safe(w)}" ${selectedWeekend===w?'selected':''}>${safe(niceDate(w))}</option>`).join('')}</select></div></div>
- <div class="vu-cal-summary-heading"><h2>${filtered.length} partite</h2><button type="button" id="vu-cal-next">PROSSIME ›</button></div>
- ${filtered.length?groupWeekends(filtered).map(([k,v])=>weekBlock(k,v)).join(''):'<div class="vu-calendar-week vu-cal-empty">Nessuna partita per i filtri scelti.</div>'}</div>`;
+ const today=tomorrowProofToday();
+ const upcoming=fixtures.filter(f=>f.match_date>=today&&f.status!=='completed'&&f.status!=='cancelled').sort(order);
+ const selected=activeCalendarCategory;
+ const scoped=selected?categoryFixtures(fixtures,selected).sort(order):[];
+ const nextScoped=scoped.filter(f=>f.match_date>=today&&f.status!=='completed'&&f.status!=='cancelled');
+ const tiles=categoryLabels.map(name=>{
+  const rows=categoryFixtures(upcoming,name),first=rows[0];
+  return '<button type="button" class="vu-cal-category-tile" data-cal-pick="'+safe(name)+'"><span class="vu-cal-category-name">'+safe(name)+'</span><strong>'+(first?'📅 '+safe(niceDate(first.match_date)):'Nessuna partita futura')+'</strong><small>'+(first?'⏰ '+safe(hm(first.kick_off_time))+' · '+safe(first.home_team==='VOLLA UNITED'?first.away_team:first.home_team):'Calendario da caricare')+'</small><span class="vu-cal-category-arrow">›</span></button>';
+ }).join('');
+ const top='<div class="vu-cal-hero"><small>VOLLA UNITED ACADEMY · STAGIONE 2026/27</small><h2>'+(selected?'Calendario '+safe(selected):'Calendari')+'</h2><p>Data, ora, avversario e casa/trasferta. Campionati separati.</p></div>';
+ if(!selected)return calendarStyles()+'<div class="vu-cal">'+top+
+ '<h2 class="vu-cal-section-title">⚡ ACCESSO RAPIDO</h2><div class="vu-cal-category-grid">'+tiles+'</div>'+
+ '<h2 class="vu-cal-section-title">📅 PROSSIMI IMPEGNI · TUTTE LE CATEGORIE</h2>'+
+ (upcoming.length?groupWeekends(upcoming).slice(0,4).map(([k,rows])=>weekBlock(k,rows)).join(''):'<section class="vu-calendar-week vu-cal-empty">Nessun impegno futuro inserito.</section>')+'</div>';
+ const leagues=[...new Set(scoped.map(competitionOf))];
+ return calendarStyles()+'<div class="vu-cal"><button type="button" id="vu-cal-back" class="vu-cal-back">‹ Tutte le categorie</button>'+top+
+ '<div class="vu-cal-summary-heading"><h2>📅 PROSSIMI IMPEGNI</h2><span>'+nextScoped.length+' in programma</span></div>'+
+ (nextScoped.length?groupWeekends(nextScoped).map(([k,rows])=>weekBlock(k,rows)).join(''):'<section class="vu-calendar-week vu-cal-empty">Nessuna partita futura per questa categoria.</section>')+
+ '<h2 class="vu-cal-section-title">🏆 CAMPIONATI</h2>'+
+ (leagues.length?competitionBlocks(scoped):'<section class="vu-calendar-week vu-cal-empty">Nessun campionato ancora caricato.</section>')+'</div>';
 }
 export function bindCalendarPage(render){
- document.getElementById('vu-cal-category')?.addEventListener('change',e=>{selectedCategory=e.target.value;render();});
- document.getElementById('vu-cal-week')?.addEventListener('change',e=>{selectedWeekend=e.target.value;render();});
- document.getElementById('vu-cal-next')?.addEventListener('click',()=>{selectedWeekend=groupWeekends(window.__vuCalendarFixtures||[]).find(([k,rows])=>rows.some(f=>f.match_date>=tomorrowProofToday()&&f.status==='scheduled'))?.[0]||'all';render();});
+ document.querySelectorAll('[data-cal-pick]').forEach(b=>b.addEventListener('click',()=>{activeCalendarCategory=b.dataset.calPick;render();window.scrollTo(0,0);}));
+ document.getElementById('vu-cal-back')?.addEventListener('click',()=>{activeCalendarCategory=null;render();window.scrollTo(0,0);});
 }
 
 export function bindCalendarEdits(sb,fixtures,onSaved){
