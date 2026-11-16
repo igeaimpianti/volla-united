@@ -632,6 +632,21 @@ async function vuReviewPlayerRequest(id,approve){if(me?.role!=='admin')return;co
 const vuDashDate=d=>d?new Date(d+'T12:00:00'):null;
 const vuDashToday=()=>new Date().toLocaleDateString('en-CA');
 const vuDashScore=m=>isFigc(m)&&Array.isArray(m.figc_periods)&&m.figc_periods.length?figcScore(m.figc_periods):[Number(m.goals_for),Number(m.goals_against)];
+function vuCalendarDashboardAll(){
+ const existing=vuCalendarFixtures.slice();
+ const normalized=s=>String(s||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+ const today=vuRomeToday();
+ for(const m of matches){
+  if(!m.match_date||m.match_date<today||['completed','postponed','cancelled'].includes(m.status)||!m.opponent)continue;
+  const cat=cats.find(c=>c.id===m.category_id);
+  if(!cat)continue;
+  const duplicate=existing.some(f=>f.category_id===m.category_id&&f.match_date===m.match_date&&normalized(f.home_team==='VOLLA UNITED'?f.away_team:f.home_team)===normalized(m.opponent));
+  if(duplicate)continue;
+  const atHome=vuAtHome(m);
+  existing.push({category_id:m.category_id,category_name:cat.name,match_date:m.match_date,kick_off_time:m.kick_off_time,home_team:atHome?'VOLLA UNITED':m.opponent,away_team:atHome?m.opponent:'VOLLA UNITED',status:'scheduled'});
+ }
+ return existing;
+}
 function vuDashHome(){
  const admin=me.role==='admin',ids=permitted(),today=vuDashToday();
  const scope=matches.filter(m=>ids.includes(m.category_id));
@@ -663,7 +678,7 @@ function vuDashHome(){
  <div class="vu-dash-heading"><h2>🏆 TORNEI</h2><span>SEZIONE SEPARATA</span></div>
  <div class="vu-dash-stats">${[[tournaments.length,'TORNEI DISPUTATI','🏆','tournaments'],[tournaments.filter(m=>Number(m.tournament_position)===1).length,'PRIMI POSTI','🥇','first']].map(([n,t,i,k])=>`<button type="button" class="vu-dash-stat" data-dash-detail="${k}" aria-label="Apri dettaglio ${t}"><span>${i} ${t}</span><strong>${n}</strong><small>TOCCA PER I DETTAGLI ›</small></button>`).join('')}</div>
  ${admin?vuPlayerApprovalPanel():''}
-  ${admin?weekendDashboard(vuCalendarFixtures):''}
+  ${admin?weekendDashboard(vuCalendarDashboardAll()):''}
  <div class="vu-dash-heading"><h2>⚽ PROSSIMO IMPEGNO</h2><span>${upcoming.length} IN PROGRAMMA</span></div>
  ${next?`<section class="vu-dash-feature"><div class="vu-dash-tag">${esc(catName(next.category_id))} · ${esc(upper(next.match_type||'PARTITA'))}</div><div class="vu-dash-opponent">${esc(upper(isTournament(next)?next.tournament_name||'TORNEO':next.opponent||'AVVERSARIO DA DEFINIRE'))}</div><div class="vu-dash-meta">📅 ${esc(dateIt(next.match_date))} · ⏰ ${esc((next.kick_off_time||'').slice(0,5)||'DA DEFINIRE')}</div><div class="vu-dash-meta">🏟️ ${esc(upper(next.field_name||'CAMPO DA DEFINIRE'))}</div><button class="vu-dash-link" data-page="callhistory">APRI CONVOCAZIONI →</button></section>`:`<section class="vu-dash-feature"><div class="vu-dash-opponent">NESSUNA PARTITA IN PROGRAMMA</div><div class="vu-dash-meta">LE PROSSIME CONVOCAZIONI APPARIRANNO QUI.</div><button class="vu-dash-link" data-page="matches">CREA CONVOCAZIONE →</button></section>`}
 
