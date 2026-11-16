@@ -91,11 +91,14 @@ export function calendarPage(fixtures){
    }).join('')+'</div>';
  }else if(calendarView==='category'){
    const rows=fixtures.filter(f=>categoryMatch(f,activeCalendarCategory));
-   const upcoming=rows.filter(f=>upcomingFixture(f)&&f.match_date>=today).sort(order);
    const competitions=[...new Set(rows.map(leagueName))].sort((a,b)=>a.localeCompare(b,'it'));
+   // Mostra soltanto la prima partita futura di ciascun campionato.
+   const upcoming=competitions.map(competition=>rows
+     .filter(f=>leagueName(f)===competition&&upcomingFixture(f)&&f.match_date>=today)
+     .sort(order)[0]).filter(Boolean).sort(order);
    body='<button class="vu-cal-back" data-cal-back="home">‹ Tutte le categorie</button>'+
    calendarHead(activeCalendarCategory,'Prossimi impegni e campionati della categoria.')+
-   '<div class="vu-cal-section-row"><h3>Prossimi impegni</h3><small>'+upcoming.length+' IN PROGRAMMA</small></div>'+
+   '<div class="vu-cal-section-row"><h3>Prossimi impegni</h3><small>1 PER CAMPIONATO · '+upcoming.length+' IN PROGRAMMA</small></div>'+
    (upcoming.length?matchSummary(upcoming):'<div class="vu-cal-no-games">Nessuna partita futura inserita.</div>')+
    '<div class="vu-cal-section-row"><h3>Campionati</h3><small>'+competitions.length+' DISPONIBILI</small></div>'+
    (competitions.length?'<div class="vu-cal-competition-list">'+competitions.map(name=>{
