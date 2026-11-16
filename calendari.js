@@ -79,7 +79,7 @@ export function bindCalendarEdits(sb,fixtures,onSaved){
     event.preventDefault();
     const date=modal.querySelector('#vu-cal-date').value;
     const time=modal.querySelector('#vu-cal-time').value;
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!/^\\d{2}:\\d{2}$/.test(time)){errorBox.textContent='Inserisci una data e un orario validi.';return;}
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^\d{2}:\d{2}$/.test(time)){errorBox.textContent='Inserisci una data e un orario validi.';return;}
     if(date===fixture.match_date&&time===hm(fixture.kick_off_time)){close();return;}
     submit.disabled=true;cancel.disabled=true;submit.textContent='Salvataggio…';errorBox.textContent='';
     try{
