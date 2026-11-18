@@ -15,12 +15,13 @@ export async function getCalendarFixtures(sb,cats) {
  const names=new Map(cats.map(c=>[c.id,c.name]));
  return (data||[]).map(f=>({...f,category_name:names.get(f.category_id)||'Categoria'})).sort(order);
 }
+const fixtureCompetitionLabel=f=>String(f.provider||'').trim().split(/\s*[·•]\s*/)[0].trim().toUpperCase();
 function fixtureRow(f){
  const home=f.home_team==='VOLLA UNITED',opponent=home?f.away_team:f.home_team;
  if(f.status==='bye'||opponent==='RIPOSO')return '<article class="vu-calendar-game vu-cal-bye"><span class="vu-cal-bye-label">⏸ RIPOSO · Nessuna partita prevista</span></article>';
  return `<article class="vu-calendar-game">
   <div class="vu-calendar-time"><strong>${safe(hm(f.kick_off_time))}</strong><small>${safe(niceDate(f.match_date))}</small></div>
-  <div class="vu-calendar-game-main"><span class="vu-calendar-category">UNDER ${safe(f.category_name)}</span><strong>${home?'VOLLA UNITED':safe(opponent)} <span class="vu-calendar-vs">vs</span> ${home?safe(opponent):'VOLLA UNITED'}</strong><small>${home?'🏠 CASA':'🚌 TRASFERTA'}</small></div>
+  <div class="vu-calendar-game-main"><span class="vu-calendar-category">${safe(String(f.category_name||'').toUpperCase())}${fixtureCompetitionLabel(f)?' - '+safe(fixtureCompetitionLabel(f)):''}</span><strong>${home?'VOLLA UNITED':safe(opponent)} <span class="vu-calendar-vs">vs</span> ${home?safe(opponent):'VOLLA UNITED'}</strong><small>${home?'🏠 CASA':'🚌 TRASFERTA'}</small></div>
   <span class="vu-calendar-place ${home?'at-home':'away'}">${home?'CASA':'FUORI'}</span>
   ${f.id? `<button type="button" class="vu-cal-edit" data-cal-edit="${safe(f.id)}" aria-label="Modifica data e ora della partita">✎ Modifica</button>`:''}
  </article>`;
