@@ -669,7 +669,7 @@ function vuDashHome(){
  const weekAttendance=attendance.filter(x=>sessionIds.has(x.session_id));
  const weekPct=weekAttendance.length?Math.round(100*weekAttendance.filter(x=>x.present).length/weekAttendance.length):null;
  const weekMatches=normal.filter(m=>m.match_date>=weekKey&&m.match_date<=today);
- const quick=[['attendance','✅','REGISTRA PRESENZE'],['matches','📋','NUOVA CONVOCAZIONE'],['callhistory','🗂️','CONVOCAZIONI'],['history','🏆','RISULTATI'],['players','👥','CALCIATORI'],...(admin?[['profile','🪪','PROFILI']]:[['calendari','📅','CALENDARI']]),...(admin?[['distinte','📄','DISTINTE'],['calendari','📅','GESTIONE CALENDARI']]:[])];
+ const quick=[['attendance','✅','REGISTRA PRESENZE'],['matches','📋','NUOVA CONVOCAZIONE'],['callhistory','🗂️','CONVOCAZIONI'],['history','🏆','RISULTATI'],['players','👥','CALCIATORI'],...(admin?[['profile','🪪','PROFILI']]:[['calendari','📅','CALENDARI']]),...(admin?[['distinte','📄','DISTINTE'],['calendari','📅','CALENDARI']]:[])];
  const next=upcoming[0];
  const catName=id=>upper(cats.find(c=>c.id===id)?.name||'CATEGORIA');
  return `<div class="vu-dash">
