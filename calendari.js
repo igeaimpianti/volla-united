@@ -16,14 +16,14 @@ export async function getCalendarFixtures(sb,cats) {
  return (data||[]).map(f=>({...f,category_name:names.get(f.category_id)||'Categoria'})).sort(order);
 }
 const fixtureCompetitionLabel=f=>String(f.provider||'').trim().split(/\s*[·•]\s*/)[0].trim().toUpperCase();
-function fixtureRow(f){
+function fixtureRow(f,canEdit=true){
  const home=f.home_team==='VOLLA UNITED',opponent=home?f.away_team:f.home_team;
  if(f.status==='bye'||opponent==='RIPOSO')return '<article class="vu-calendar-game vu-cal-bye"><span class="vu-cal-bye-label">⏸ RIPOSO · Nessuna partita prevista</span></article>';
  return `<article class="vu-calendar-game">
   <div class="vu-calendar-time"><strong>${safe(hm(f.kick_off_time))}</strong><small>${safe(niceDate(f.match_date))}</small></div>
   <div class="vu-calendar-game-main"><span class="vu-calendar-category">${safe(String(f.category_name||'').toUpperCase())}${fixtureCompetitionLabel(f)?' - '+safe(fixtureCompetitionLabel(f)):''}</span><strong>${home?'VOLLA UNITED':safe(opponent)} <span class="vu-calendar-vs">vs</span> ${home?safe(opponent):'VOLLA UNITED'}</strong><small>${home?'🏠 CASA':'🚌 TRASFERTA'}</small></div>
   <span class="vu-calendar-place ${home?'at-home':'away'}">${home?'CASA':'FUORI'}</span>
-  ${f.id? `<button type="button" class="vu-cal-edit" data-cal-edit="${safe(f.id)}" aria-label="Modifica data e ora della partita">✎ Modifica</button>`:''}
+  ${f.id&&canEdit? `<button type="button" class="vu-cal-edit" data-cal-edit="${safe(f.id)}" aria-label="Modifica data e ora della partita">✎ Modifica</button>`:''}
  </article>`;
 }
 function calendarStyles(){return `<style id="vu-calendar-style">
@@ -36,10 +36,10 @@ function groupWeekends(fixtures){
  fixtures.forEach(f=>{const k=weekEnd(f.match_date);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(f);});
  return [...groups.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
 }
-function weekBlock(k,rows){
+function weekBlock(k,rows,canEdit=true){
  const sat=dateLocal(k);const sun=new Date(sat);sun.setDate(sun.getDate()+1);
  const heading='Weekend '+new Intl.DateTimeFormat('it-IT',{day:'2-digit',month:'short'}).format(sat)+' – '+new Intl.DateTimeFormat('it-IT',{day:'2-digit',month:'short',year:'numeric'}).format(sun);
- return `<section class="vu-calendar-week"><div class="vu-calendar-week-title"><strong>📅 ${safe(heading)}</strong><span>${rows.length} ${rows.length===1?'partita':'partite'}</span></div>${rows.map(fixtureRow).join('')}</section>`;
+ return `<section class="vu-calendar-week"><div class="vu-calendar-week-title"><strong>📅 ${safe(heading)}</strong><span>${rows.length} ${rows.length===1?'partita':'partite'}</span></div>${rows.map(f=>fixtureRow(f,canEdit)).join('')}</section>`;
 }
 export function weekendDashboard(fixtures,openPage=true){
  const today=tomorrowProofToday();
@@ -63,35 +63,35 @@ function upcomingWeekend(){
  const sunday=[sun.getFullYear(),String(sun.getMonth()+1).padStart(2,'0'),String(sun.getDate()).padStart(2,'0')].join('-');
  return {sat,sunday,today};
 }
-function calendarCompetitionBlock(name,rows){
+function calendarCompetitionBlock(name,rows,canEdit=true){
  const isFIGC=name.startsWith('FIGC');
  const isAudax=name.startsWith('RAGAZZI D’ORO');
  const canSplit=(name==='NEXTGEN'||name==='SPORT & FUN'||isFIGC||isAudax)&&rows.length>0&&rows.every(f=>Number.isInteger(Number(f.round_number))&&Number(f.round_number)>=1&&Number(f.round_number)<=(isFIGC?22:18));
  const maxRound=Math.max(...rows.map(f=>Number(f.round_number)));
  const half=isFIGC?(name.includes('GIRONE 19')?9:11):isAudax?7:maxRound>14?9:7;
- const section=(title,items)=>items.length?'<section class="vu-cal-round"><h3>'+safe(title)+'</h3>'+items.slice().sort((a,b)=>Number(a.round_number)-Number(b.round_number)).map(f=>'<div class="vu-cal-round-fixture"><div class="vu-cal-round-number">'+safe(f.round_number)+'ª GIORNATA</div>'+fixtureRow(f)+'</div>').join('')+'</section>':'';
+ const section=(title,items)=>items.length?'<section class="vu-cal-round"><h3>'+safe(title)+'</h3>'+items.slice().sort((a,b)=>Number(a.round_number)-Number(b.round_number)).map(f=>'<div class="vu-cal-round-fixture"><div class="vu-cal-round-number">'+safe(f.round_number)+'ª GIORNATA</div>'+fixtureRow(f,canEdit)+'</div>').join('')+'</section>':'';
  return '<div class="vu-cal-league">'+(canSplit?
  section('GIRONE DI ANDATA',rows.filter(f=>Number(f.round_number)<=half))+
  section('GIRONE DI RITORNO',rows.filter(f=>Number(f.round_number)>half)):
- rows.slice().sort(order).map(fixtureRow).join(''))+'</div>';
+ rows.slice().sort(order).map(f=>fixtureRow(f,canEdit)).join(''))+'</div>';
 }
 function calendarHead(title,subtitle){
  return '<header class="vu-cal-head"><span>VOLLA UNITED ACADEMY · 2026/27</span><h2>'+safe(title)+'</h2><p>'+safe(subtitle)+'</p></header>';
 }
-function matchSummary(rows){
+function matchSummary(rows,canEdit=true){
  if(!rows.length)return '<div class="vu-cal-no-games">Nessuna partita prevista per questo fine settimana.</div>';
- return '<div class="vu-cal-fixture-list">'+rows.slice().sort(order).map(fixtureRow).join('')+'</div>';
+ return '<div class="vu-cal-fixture-list">'+rows.slice().sort(order).map(f=>fixtureRow(f,canEdit)).join('')+'</div>';
 }
-export function calendarPage(fixtures){
+export function calendarPage(fixtures,allowedCategories=categoryLabels,canEdit=true){
  const {sat,sunday,today}=upcomingWeekend();
  const weekend=fixtures.filter(f=>upcomingFixture(f)&&f.match_date>=today&&f.match_date>=sat&&f.match_date<=sunday).sort(order);
  const weekendLabel=new Intl.DateTimeFormat('it-IT',{day:'numeric',month:'long'}).format(dateLocal(sat))+' – '+new Intl.DateTimeFormat('it-IT',{day:'numeric',month:'long',year:'numeric'}).format(dateLocal(sunday));
  let body='';
  if(calendarView==='home'){
    body=calendarHead('Calendari','Le prossime partite della società, senza convocazioni o statistiche.')+
-   '<section class="vu-cal-nextweek"><div class="vu-cal-kicker">PROSSIMO FINE SETTIMANA</div><h3>'+safe(weekendLabel)+'</h3><div class="vu-cal-tally">'+weekend.length+' '+(weekend.length===1?'partita':'partite')+' in programma</div>'+matchSummary(weekend)+'</section>'+
+   '<section class="vu-cal-nextweek"><div class="vu-cal-kicker">PROSSIMO FINE SETTIMANA</div><h3>'+safe(weekendLabel)+'</h3><div class="vu-cal-tally">'+weekend.length+' '+(weekend.length===1?'partita':'partite')+' in programma</div>'+matchSummary(weekend,canEdit)+'</section>'+
    '<div class="vu-cal-section-row"><h3>Categorie</h3><small>SELEZIONA UNA CATEGORIA</small></div>'+
-   '<div class="vu-cal-category-grid">'+categoryLabels.map(name=>{
+   '<div class="vu-cal-category-grid">'+allowedCategories.map(name=>{
       const n=fixtures.filter(f=>categoryMatch(f,name)).length;
       return '<button type="button" class="vu-cal-category-tile" data-cal-pick="'+safe(name)+'"><strong>'+safe(name)+'</strong><small>'+(n?n+' partite archiviate':'Calendari da caricare')+'</small><span>›</span></button>';
    }).join('')+'</div>';
@@ -105,7 +105,7 @@ export function calendarPage(fixtures){
    body='<button class="vu-cal-back" data-cal-back="home">‹ Tutte le categorie</button>'+
    calendarHead(activeCalendarCategory,'Prossimi impegni e campionati della categoria.')+
    '<div class="vu-cal-section-row"><h3>Prossimi impegni</h3><small>1 PER CAMPIONATO · '+upcoming.length+' IN PROGRAMMA</small></div>'+
-   (upcoming.length?matchSummary(upcoming):'<div class="vu-cal-no-games">Nessuna partita futura inserita.</div>')+
+   (upcoming.length?matchSummary(upcoming,canEdit):'<div class="vu-cal-no-games">Nessuna partita futura inserita.</div>')+
    '<div class="vu-cal-section-row"><h3>Campionati</h3><small>'+competitions.length+' DISPONIBILI</small></div>'+
    (competitions.length?'<div class="vu-cal-competition-list">'+competitions.map(name=>{
      const games=rows.filter(f=>leagueName(f)===name);
@@ -116,7 +116,7 @@ export function calendarPage(fixtures){
    body='<button class="vu-cal-back" data-cal-back="category">‹ Campionati '+safe(activeCalendarCategory)+'</button>'+
    calendarHead(activeCompetition,activeCalendarCategory+' · Tutte le partite del campionato')+
    '<div class="vu-cal-section-row"><h3>Calendario</h3><small>'+rows.length+' PARTITE</small></div>'+
-   (rows.length?calendarCompetitionBlock(activeCompetition,rows):'<div class="vu-cal-no-games">Nessuna partita presente.</div>');
+   (rows.length?calendarCompetitionBlock(activeCompetition,rows,canEdit):'<div class="vu-cal-no-games">Nessuna partita presente.</div>');
  }
  return calendarStyles()+'<div class="vu-cal vu-cal-organized">'+body+'</div>';
 }
