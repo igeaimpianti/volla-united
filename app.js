@@ -1110,9 +1110,33 @@ function shareWhatsApp(message){
 // PRESENZE ALLENAMENTI - una sessione per categoria e data.
 async function loadAttendance(){
   vuAttendanceReady=false;
-  const [a,b]=await Promise.all([sb.from('training_sessions').select('*').order('training_date',{ascending:false}),sb.from('training_attendance').select('*')]);
-  if(a.error||b.error){console.error(a.error||b.error);sessions=[];attendance=[];toast('Configura le tabelle presenze su Supabase');return}
-  sessions=a.data||[];attendance=b.data||[];vuAttendanceReady=true;
+  try{
+    // Supabase PostgREST limits a single response to 1000 rows by default.
+    // Page through the entire attendance register; never interpret a partial load as absence.
+    const fetchAll=async(table,sortColumn)=>{
+      const result=[];
+      const pageSize=500;
+      for(let offset=0;;offset+=pageSize){
+        const {data,error}=await sb.from(table).select('*').order(sortColumn,{ascending:true}).range(offset,offset+pageSize-1);
+        if(error)throw error;
+        result.push(...(data||[]));
+        if(!data||data.length<pageSize)break;
+      }
+      return result;
+    };
+    const [loadedSessions,loadedAttendance]=await Promise.all([
+      fetchAll('training_sessions','id'),
+      fetchAll('training_attendance','session_id')
+    ]);
+    sessions=loadedSessions;
+    attendance=loadedAttendance;
+    vuAttendanceReady=true;
+    return true;
+  }catch(err){
+    console.error('Caricamento presenze incompleto:',err);
+    toast('Impossibile caricare tutte le presenze. Riprova: i dati salvati non sono stati cancellati.');
+    return false;
+  }
 }
 const dateIt=d=>d?new Date(d+'T12:00:00').toLocaleDateString('it-IT'):'';
 const fullName=p=>`${p.last_name||''} ${p.first_name||''}`.trim();
@@ -1208,7 +1232,10 @@ function bindAttendance(){
       const data=ps.map(p=>{const present=!!document.querySelector(`[data-attend="${p.id}"]`)?.checked;const reason=document.querySelector(`[data-absence-reason="${p.id}"]`)?.value||null;const note=document.querySelector(`[data-absence-note="${p.id}"]`)?.value.trim()||null;if(!present&&!reason&&!attendance.some(x=>x.session_id===sess?.id&&x.player_id===p.id&&x.present===false))throw Error('Seleziona il motivo dell’assenza per '+fullName(p));if(!present&&reason==='altro'&&!note)throw Error('Specifica il motivo per '+fullName(p));return {player_id:p.id,present,absence_reason:present?null:reason,absence_note:!present&&reason==='altro'?note:null}});
       if(!sess){const created=await sb.from('training_sessions').insert({category_id:currentCat,training_date:attendanceDate,created_by:me.id}).select('id').single();if(created.error)throw created.error;sess=created.data}
       const r=await sb.from('training_attendance').upsert(data.map(x=>({...x,session_id:sess.id})),{onConflict:'session_id,player_id'});if(r.error)throw r.error;
-      await loadAttendance();render();toast('Presenze salvate correttamente');
+      if(!await loadAttendance())throw Error('Salvataggio eseguito, ma verifica dei dati non riuscita. Riapri la schermata prima di riprovare.');
+      const confirmed=data.every(x=>attendance.some(a=>a.session_id===sess.id&&a.player_id===x.player_id&&a.present===x.present&&a.absence_reason===x.absence_reason));
+      if(!confirmed)throw Error('Verifica del salvataggio non riuscita. Ricarica prima di modificare le presenze.');
+      render();toast('Presenze salvate correttamente');
     }catch(err){toast('Errore: '+err.message);btn.disabled=false;btn.textContent=oldLabel}
   });
   $('#print-attendance')?.addEventListener('click',async e=>{
