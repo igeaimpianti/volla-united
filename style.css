@@ -292,3 +292,24 @@ input:disabled,select:disabled,textarea:disabled{opacity:.65}
 @media(prefers-reduced-motion:reduce){
  .tile,.tab,.item,.btn{transition:none}
 }
+
+
+/* Responsive header: account and notifications stay together on every phone. */
+.vu-header{min-width:0;flex-wrap:wrap;column-gap:10px;row-gap:10px}
+.vu-header .vu-brand{flex:1 1 auto;min-width:0}
+.vu-header .vu-account{flex:0 1 auto;min-width:0;max-width:min(48%,290px)}
+.vu-header .vu-account summary{display:block;max-width:100%;text-overflow:ellipsis}
+.vu-header .vu-account-menu{box-sizing:border-box}
+@media(max-width:650px){
+  .vu-header{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:9px!important}
+  .vu-header .vu-brand{flex:1 0 100%!important;width:100%!important}
+  .vu-header .vu-account{order:2!important;flex:0 1 auto!important;max-width:calc(100% - 62px)!important;margin-left:auto!important}
+  .vu-header .vu-bell{order:3!important;flex:0 0 auto!important}
+  .vu-header .vu-account summary{max-width:100%!important;padding:10px 12px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+  .vu-header .vu-account-menu{position:fixed!important;left:auto!important;right:max(12px,env(safe-area-inset-right,0px))!important;top:auto!important;width:min(310px,calc(100vw - 24px))!important;max-width:calc(100vw - 24px)!important;max-height:min(70dvh,600px)!important;overflow-y:auto!important;overscroll-behavior:contain!important}
+}
+@media(max-width:360px){
+  .vu-header .vu-brand img{width:38px!important;height:38px!important}
+  .vu-header .vu-brand strong{font-size:12px!important}
+  .vu-header .vu-account summary{font-size:11px!important}
+}
