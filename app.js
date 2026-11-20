@@ -1117,7 +1117,7 @@ async function loadAttendance(){
       const result=[];
       const pageSize=500;
       for(let offset=0;;offset+=pageSize){
-        const {data,error}=await sb.from(table).select('*').order(sortColumn,{ascending:true}).range(offset,offset+pageSize-1);
+        const {data,error}=await sb.from(table).select('*').order(sortColumn,{ascending:true}).order(table==='training_attendance'?'player_id':'id',{ascending:true}).range(offset,offset+pageSize-1);
         if(error)throw error;
         result.push(...(data||[]));
         if(!data||data.length<pageSize)break;
