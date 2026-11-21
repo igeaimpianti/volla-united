@@ -1359,7 +1359,7 @@ async function vuDownloadFigcReport(m){
  const pageHeight=p.getHeight();
  const putTop=(t,x,top,size=9)=>put(t,x,pageHeight-top,size);
  const ageYear=String(cats.find(c=>c.id===m.category_id)?.name||'').match(/20(?:14|15|16|17)/)?.[0];
- const checkboxX={'2017':237,'2016':349,'2015':612,'2014':715};
+ const checkboxX={'2017':237,'2016':349,'2015':479,'2014':553};
  if(checkboxX[ageYear]&&checkboxX[ageYear]<p.getWidth())putTop('X',checkboxX[ageYear],148,10);
  // La data ufficiale ha tre caselle separate (GG / MM / AAAA).
  const dateParts=String(m.match_date||'').split('-');
