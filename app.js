@@ -1339,10 +1339,14 @@ async function vuDownloadFigcReport(m){
  const age=vuFigcReportAge(m);
  if(!age)throw Error('Referto disponibile solo per campionati FIGC U10-U13');
  if(!allowed(m.category_id,'view'))throw Error('Non autorizzato');
- const template=await fetch('./referto-figc-originale.pdf',{cache:'no-store'});
- if(!template.ok)throw Error('Modello FIGC originale non ancora caricato. NON usare il vecchio facsimile: scarica il modello originale e compilalo per la gara.');
+ const pdfPath=new URL('referto-figc-originale.pdf',new URL('./app.js',import.meta.url));
+ let template;
+ try{template=await fetch(pdfPath.href,{cache:'no-store',redirect:'follow'});}catch(e){throw Error('Impossibile raggiungere il PDF FIGC sul sito: '+pdfPath.pathname+'. Verificare la pubblicazione.');}
+ if(!template.ok)throw Error('Il PDF FIGC non è disponibile sul sito (HTTP '+template.status+'). Percorso: '+pdfPath.pathname+'. Verificare GitHub Pages e attendere la pubblicazione.');
+ const pdfBytes=await template.arrayBuffer();
+ if(new Uint8Array(pdfBytes.slice(0,5)).some((v,i)=>v!==[37,80,68,70,45][i]))throw Error('Il percorso del referto restituisce una pagina anziché un PDF. Verificare la pubblicazione del file originale.');
  const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
- const doc=await PDFDocument.load(await template.arrayBuffer());
+ const doc=await PDFDocument.load(pdfBytes);
  if(doc.getPageCount()!==2)throw Error('Modello FIGC non valido: sono richieste le due pagine originali.');
  const p=doc.getPage(0),font=await doc.embedFont(StandardFonts.Helvetica);
  const clean=t=>String(t??'').normalize('NFKD').replace(/[^\x20-\x7E]/g,' ');
