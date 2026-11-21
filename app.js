@@ -1359,8 +1359,8 @@ async function vuDownloadFigcReport(m){
  const pageHeight=p.getHeight();
  const putTop=(t,x,top,size=9)=>put(t,x,pageHeight-top,size);
  const ageYear=String(cats.find(c=>c.id===m.category_id)?.name||'').match(/20(?:14|15|16|17)/)?.[0];
- const checkboxX={'2017':184.5,'2016':268.5,'2015':479,'2014':553};
- if(checkboxX[ageYear]&&checkboxX[ageYear]<p.getWidth())putTop('X',checkboxX[ageYear],139,10);
+ const checkboxX={'2017':183.5,'2016':267.5,'2015':479,'2014':553};
+ if(checkboxX[ageYear]&&checkboxX[ageYear]<p.getWidth())putTop('X',checkboxX[ageYear],140,10);
  // La data ufficiale ha tre caselle separate (GG / MM / AAAA).
  const dateParts=String(m.match_date||'').split('-');
  if(dateParts.length===3){putTop(dateParts[2],82,255,9);putTop(dateParts[1],119,255,9);putTop(dateParts[0],157,255,9);}
