@@ -1337,58 +1337,34 @@ function vuFigcReportAge(m){
 }
 async function vuDownloadFigcReport(m){
  const age=vuFigcReportAge(m);
- if(!age)throw Error('Referto disponibile solo per campionati FIGC delle categorie U10/U11/U12/U13');
+ if(!age)throw Error('Referto disponibile solo per campionati FIGC U10-U13');
  if(!allowed(m.category_id,'view'))throw Error('Non autorizzato');
+ const template=await fetch('./referto-figc-originale.pdf',{cache:'no-store'});
+ if(!template.ok)throw Error('Modello FIGC originale non ancora caricato. NON usare il vecchio facsimile: scarica il modello originale e compilalo per la gara.');
  const {PDFDocument,StandardFonts,rgb}=await import('https://esm.sh/pdf-lib@1.17.1');
- const doc=await PDFDocument.create();
- const regular=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);
- const ink=rgb(.12,.13,.16),muted=rgb(.43,.45,.49),blue=rgb(.08,.22,.53);
+ const doc=await PDFDocument.load(await template.arrayBuffer());
+ if(doc.getPageCount()!==2)throw Error('Modello FIGC non valido: sono richieste le due pagine originali.');
+ const p=doc.getPage(0),font=await doc.embedFont(StandardFonts.Helvetica);
+ const clean=t=>String(t??'').normalize('NFKD').replace(/[^\x20-\x7E]/g,' ');
+ const put=(t,x,y,size=9)=>{if(t)p.drawText(clean(t),{x,y,size,font,color:rgb(0,0,0)})};
  const date=m.match_date?m.match_date.split('-').reverse().join('/'):'';
- const home=vuAtHome(m),one=home?'VOLLA UNITED ACADEMY':String(m.opponent||''),two=home?String(m.opponent||''):'VOLLA UNITED ACADEMY';
- const result=m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length?m.figc_periods:[];
- const periods=result.map(p=>home?[Number(p[0]),Number(p[1])]:[Number(p[1]),Number(p[0])]);
- const points=periods.length?figcScore(periods):null;
- const text=(page,t,x,y,size=10,isBold=false,color=ink)=>page.drawText(String(t??'').normalize('NFKD').replace(/[^\x20-\x7E]/g,' '),{x,y,size,font:isBold?bold:regular,color});
- const line=(page,x,y,w)=>page.drawLine({start:{x,y},end:{x:x+w,y},thickness:.6,color:muted});
- const box=(page,x,y,w,h)=>page.drawRectangle({x,y,width:w,height:h,borderColor:muted,borderWidth:.7});
- const row=(page,label,value,y)=>{text(page,label,42,y,9,true,muted);text(page,value||'',205,y,10);line(page,42,y-8,510)};
- const p=doc.addPage([595.28,841.89]);
- text(p,'LND CAMPANIA',42,795,15,true,blue);text(p,'FIGC - SETTORE GIOVANILE E SCOLASTICO',290,795,10,true,blue);
- line(p,42,781,510);text(p,'REFERTO GARA ATTIVITA DI BASE',115,751,19,true);
- text(p,'PULCINI U10/U11 - ESORDIENTI U12/U13',132,730,11,true);
- row(p,'DELEGAZIONE DI','',703);
- row(p,'CATEGORIA',age,674);
- row(p,'TIPO GARA','CAMPIONATO FIGC',645);
- row(p,'GIRONE','',616);
- row(p,'MODALITA DI GIOCO','',587);
- row(p,'DIRIGENTE ARBITRO','',558);
- row(p,'N. TESSERA / SOCIETA','',529);
- row(p,'DATA',date,500);
- row(p,'LUOGO',m.field_name||'',471);
- row(p,'ORA INIZIO',String(m.kick_off_time||'').slice(0,5),442);
- row(p,'ORA FINE','',413);
- row(p,'SQUADRA 1',one,384);
- row(p,'SQUADRA 2',two,355);
- text(p,'QUALIFICA CLUB 1 / CLUB 2:   NC    1 LV    2 LV    3 LV    4 LV    A',42,330,9);
- text(p,'PROPOSTE PRE GARA / MULTIPARTITE / 4 TEMPO: ___________________________',42,301,9);
- text(p,'RISULTATO PER TEMPI',42,267,13,true);
- text(p,'SQUADRA',42,240,9,true);[1,2,3,4].forEach((n,i)=>text(p,n+' TEMPO',177+i*69,240,8,true));text(p,'TOTALE',470,240,9,true);
- for(let team=0;team<2;team++){const y=215-team*34;text(p,team?'SQUADRA 2':'SQUADRA 1',42,y,9,true);for(let i=0;i<4;i++){box(p,170+i*69,y-8,59,25);if(periods[i])text(p,String(periods[i][team]),195+i*69,y,11,true)}box(p,465,y-8,70,25);if(points)text(p,String(points[team]),492,y,11,true)}
- text(p,'1 punto per ogni tempo vinto o pareggiato (CU n. 1 SGS)',42,132,8,false,muted);
- text(p,'TIME OUT / GIOVANI CALCIATRICI / COMPORTAMENTO: da compilare sul campo',42,105,9);
- text(p,'Report precompilato da Volla United Academy - dati non presenti lasciati vuoti',42,48,8,false,muted);
- const p2=doc.addPage([595.28,841.89]);
- text(p2,'TERZO TEMPO FAIR PLAY',42,792,15,true,blue);
- text(p2,'Note sulla merenda condivisa e sulle attivita di fair play:',42,760,10);
- for(let i=0;i<5;i++)line(p2,42,735-i*26,510);
- text(p2,'NOTE, GREEN CARD, INFORTUNI E DECISIONI DISCIPLINARI',42,570,13,true,blue);
- for(let i=0;i<12;i++)line(p2,42,542-i*28,510);
- text(p2,'DIRIGENTE SOCIETA 1',42,145,9,true);text(p2,'DIRIGENTE SOCIETA 2',225,145,9,true);text(p2,'DIRIGENTE ARBITRO',420,145,9,true);
- line(p2,42,110,145);line(p2,225,110,145);line(p2,420,110,130);
- text(p2,'Allegare gli elenchi formazione squadra e trasmettere alla Delegazione competente.',42,48,8,false,muted);
- const bytes=await doc.save();
- const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);
- const a=document.createElement('a');a.href=url;a.download='Referto-FIGC-'+date.replaceAll('/','-')+'-'+String(m.opponent||'gara').replace(/[^a-z0-9-]/gi,'-')+'.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+ const home=vuAtHome(m);
+ const team1=home?'VOLLA UNITED ACADEMY':m.opponent||'';
+ const team2=home?m.opponent||'':'VOLLA UNITED ACADEMY';
+ const ageX={'U10 (1° anno)':103,'U11 (2° anno)':201,'U12 (1° anno)':385,'U13 (2° anno)':470};
+ const ageLabel=age.replace(/ \(.*$/,'')+' ('+(age.includes('1°')?'1° anno':'2° anno')+')';
+ if(ageX[ageLabel])put('X',ageX[ageLabel],841.89-121,12);
+ put(date,102,841.89-255,9);put(m.field_name||'',295,841.89-255,9);
+ put(String(m.kick_off_time||'').slice(0,5),120,841.89-279,9);
+ put(team1,190,841.89-330,9);put(team2,190,841.89-398,9);
+ if(m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length){
+ const periods=m.figc_periods.map(v=>home?v:[v[1],v[0]]);
+ const x=[202,246,291,346];
+ for(let i=0;i<Math.min(4,periods.length);i++){put(periods[i][0],x[i],841.89-604,9);put(periods[i][1],x[i],841.89-653,9)}
+ const points=figcScore(periods);put(points[0],393,841.89-604,9);put(points[1],393,841.89-653,9);
+ }
+ const bytes=await doc.save();const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+ const a=document.createElement('a');a.href=url;a.download='Referto-FIGC-'+date.replaceAll('/','-')+'.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
 function distintaForm(m){
