@@ -1368,9 +1368,9 @@ async function vuDownloadFigcReport(m){
  putTop(String(m.kick_off_time||'').slice(0,5),120,279,9);
  putTop(team1,190,330,9);putTop(team2,190,398,9);
  // Per i Pulcini 2017 il dirigente arbitro indicato dalla società è Fiore Alessandro.
- if(ageYear==='2017')putTop('FIORE ALESSANDRO',138,231,9);
+ if(ageYear==='2017'){putTop('FIORE ALESSANDRO',138,231,9);putTop('CA37073QO',343,231,9);putTop('VOLLA UNITED ACADEMY',468,231,8);}
  // Tessera arbitro e girone devono provenire da dati confermati: mai inventarli.
- const confirmedGroup=String(m.figc_group||m.figc_girone||'').trim();
+ const confirmedGroup=String(m.figc_group||m.figc_girone||(ageYear==='2017'?'34':'')).trim();
  if(confirmedGroup)putTop(confirmedGroup.slice(0,18),506,159,9);
  if(m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length){
   const periods=m.figc_periods.map(v=>home?v:[v[1],v[0]]);
