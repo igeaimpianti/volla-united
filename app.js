@@ -1377,7 +1377,7 @@ async function vuDownloadFigcReport(m){
  const referee=figcReferees[ageYear];
  if(referee){putTop(referee.name,138,231,9);putTop(referee.card,311,231,8);putTop('VOLLA UNITED ACADEMY',425,231,8);}
  // Tessera arbitro e girone devono provenire da dati confermati: mai inventarli.
- const confirmedGroup=String(m.figc_group||m.figc_girone||(ageYear==='2017'?'34':'')).trim();
+ const confirmedGroup=String(m.figc_group||m.figc_girone||({'2017':'34','2016':'19'}[ageYear]||'')).trim();
  if(confirmedGroup)putTop(confirmedGroup.slice(0,18),506,159,9);
  if(m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length){
   const periods=m.figc_periods.map(v=>home?v:[v[1],v[0]]);
