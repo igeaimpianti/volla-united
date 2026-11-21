@@ -1348,7 +1348,7 @@ async function vuDownloadFigcReport(m){
  const result=m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length?m.figc_periods:[];
  const periods=result.map(p=>home?[Number(p[0]),Number(p[1])]:[Number(p[1]),Number(p[0])]);
  const points=periods.length?figcScore(periods):null;
- const text=(page,t,x,y,size=10,isBold=false,color=ink)=>page.drawText(String(t??'').replace(/[^\\x20-\\x7E\\xA0-\\xFF]/g,' '),{x,y,size,font:isBold?bold:regular,color});
+ const text=(page,t,x,y,size=10,isBold=false,color=ink)=>page.drawText(String(t??'').normalize('NFKD').replace(/[^\x20-\x7E]/g,' '),{x,y,size,font:isBold?bold:regular,color});
  const line=(page,x,y,w)=>page.drawLine({start:{x,y},end:{x:x+w,y},thickness:.6,color:muted});
  const box=(page,x,y,w,h)=>page.drawRectangle({x,y,width:w,height:h,borderColor:muted,borderWidth:.7});
  const row=(page,label,value,y)=>{text(page,label,42,y,9,true,muted);text(page,value||'',205,y,10);line(page,42,y-8,510)};
