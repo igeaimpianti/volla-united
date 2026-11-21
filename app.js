@@ -1355,17 +1355,33 @@ async function vuDownloadFigcReport(m){
  const home=vuAtHome(m);
  const team1=home?'VOLLA UNITED ACADEMY':m.opponent||'';
  const team2=home?m.opponent||'':'VOLLA UNITED ACADEMY';
- const ageX={'U10 (1° anno)':103,'U11 (2° anno)':201,'U12 (1° anno)':385,'U13 (2° anno)':470};
- const ageLabel=age.replace(/ \(.*$/,'')+' ('+(age.includes('1°')?'1° anno':'2° anno')+')';
- if(ageX[ageLabel])put('X',ageX[ageLabel],841.89-121,12);
- put(date,102,841.89-255,9);put(m.field_name||'',295,841.89-255,9);
- put(String(m.kick_off_time||'').slice(0,5),120,841.89-279,9);
- put(team1,190,841.89-330,9);put(team2,190,841.89-398,9);
+ // Coordinate calibrate sul modello originale FIGC Campania (A4, origine PDF in basso).
+ const pageHeight=p.getHeight();
+ const putTop=(t,x,top,size=9)=>put(t,x,pageHeight-top,size);
+ const ageYear=String(cats.find(c=>c.id===m.category_id)?.name||'').match(/20(?:14|15|16|17)/)?.[0];
+ const checkboxX={'2017':185.5,'2016':269,'2015':463,'2014':543};
+ if(checkboxX[ageYear])putTop('X',checkboxX[ageYear],148,11);
+ // La data ufficiale ha tre caselle separate (GG / MM / AAAA).
+ const dateParts=String(m.match_date||'').split('-');
+ if(dateParts.length===3){putTop(dateParts[2],82,255,9);putTop(dateParts[1],119,255,9);putTop(dateParts[0],157,255,9);}
+ putTop(m.field_name||'',295,255,9);
+ putTop(String(m.kick_off_time||'').slice(0,5),120,279,9);
+ putTop(team1,190,330,9);putTop(team2,190,398,9);
+ // Per i Pulcini 2017 il dirigente arbitro indicato dalla società è Fiore Alessandro.
+ if(ageYear==='2017')putTop('FIORE ALESSANDRO',138,231,9);
+ // Tessera arbitro e girone devono provenire da dati confermati: mai inventarli.
+ const confirmedGroup=String(m.figc_group||m.figc_girone||'').trim();
+ if(confirmedGroup)putTop(confirmedGroup.slice(0,18),506,159,9);
  if(m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length){
- const periods=m.figc_periods.map(v=>home?v:[v[1],v[0]]);
- const x=[202,246,291,346];
- for(let i=0;i<Math.min(4,periods.length);i++){put(periods[i][0],x[i],841.89-604,9);put(periods[i][1],x[i],841.89-653,9)}
- const points=figcScore(periods);put(points[0],393,841.89-604,9);put(points[1],393,841.89-653,9);
+  const periods=m.figc_periods.map(v=>home?v:[v[1],v[0]]);
+  const cells=[205,250,295,320];
+  const writeScore=(value,x,y)=>{if(value===null||value===undefined||value==='')return;putTop(String(value),x,y,9)};
+  for(let i=0;i<Math.min(4,periods.length);i++){
+   writeScore(periods[i][0],cells[i],604);
+   writeScore(periods[i][1],cells[i],653);
+  }
+  const points=figcScore(periods);
+  writeScore(points[0],395,604);writeScore(points[1],395,653);
  }
  const bytes=await doc.save();const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
  const a=document.createElement('a');a.href=url;a.download='Referto-FIGC-'+date.replaceAll('/','-')+'.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
