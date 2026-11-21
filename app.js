@@ -1359,29 +1359,34 @@ async function vuDownloadFigcReport(m){
  const pageHeight=p.getHeight();
  const putTop=(t,x,top,size=9)=>put(t,x,pageHeight-top,size);
  const ageYear=String(cats.find(c=>c.id===m.category_id)?.name||'').match(/20(?:14|15|16|17)/)?.[0];
- const checkboxX={'2017':185.5,'2016':269,'2015':463,'2014':543};
- if(checkboxX[ageYear])putTop('X',checkboxX[ageYear],148,11);
+ const checkboxX={'2017':237,'2016':349,'2015':612,'2014':715};
+ if(checkboxX[ageYear]&&checkboxX[ageYear]<p.getWidth())putTop('X',checkboxX[ageYear],148,10);
  // La data ufficiale ha tre caselle separate (GG / MM / AAAA).
  const dateParts=String(m.match_date||'').split('-');
  if(dateParts.length===3){putTop(dateParts[2],82,255,9);putTop(dateParts[1],119,255,9);putTop(dateParts[0],157,255,9);}
  putTop(m.field_name||'',295,255,9);
- putTop(String(m.kick_off_time||'').slice(0,5),120,279,9);
+ const kick=String(m.kick_off_time||'').slice(0,5);
+ putTop(kick,120,279,9);
+ const periodCount=Array.isArray(m.figc_periods)&&m.figc_periods.length===4?4:3;
+ const isFourthPeriod=periodCount===4||m.fourth_period===true||m.fourth_period===1||m.fourth_period==='true';
+ if(/^\\d{1,2}:\\d{2}$/.test(kick)){const [hh,mm]=kick.split(':').map(Number);const minutes=hh*60+mm+(isFourthPeriod?60:45);const finish=String(Math.floor(minutes/60)%24).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');putTop(finish,299,279,9);}
+
  putTop(team1,190,330,9);putTop(team2,190,398,9);
  // Per i Pulcini 2017 il dirigente arbitro indicato dalla società è Fiore Alessandro.
- if(ageYear==='2017'){putTop('FIORE ALESSANDRO',138,231,9);putTop('CA37073QO',343,231,9);putTop('VOLLA UNITED ACADEMY',468,231,8);}
+ if(ageYear==='2017'){putTop('FIORE ALESSANDRO',138,231,9);putTop('CA37073QO',311,231,8);putTop('VOLLA UNITED ACADEMY',425,231,8);}
  // Tessera arbitro e girone devono provenire da dati confermati: mai inventarli.
  const confirmedGroup=String(m.figc_group||m.figc_girone||(ageYear==='2017'?'34':'')).trim();
  if(confirmedGroup)putTop(confirmedGroup.slice(0,18),506,159,9);
  if(m.status==='completed'&&Array.isArray(m.figc_periods)&&m.figc_periods.length){
   const periods=m.figc_periods.map(v=>home?v:[v[1],v[0]]);
-  const cells=[205,250,295,320];
+  const cells=[205,240,273,324];
   const writeScore=(value,x,y)=>{if(value===null||value===undefined||value==='')return;putTop(String(value),x,y,9)};
   for(let i=0;i<Math.min(4,periods.length);i++){
    writeScore(periods[i][0],cells[i],604);
    writeScore(periods[i][1],cells[i],653);
   }
   const points=figcScore(periods);
-  writeScore(points[0],395,604);writeScore(points[1],395,653);
+  writeScore(points[0],392,604);writeScore(points[1],392,653);
  }
  const bytes=await doc.save();const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
  const a=document.createElement('a');a.href=url;a.download='Referto-FIGC-'+date.replaceAll('/','-')+'.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
