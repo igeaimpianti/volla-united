@@ -318,7 +318,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       case 'copy': {
         const source = structuredClone(session);
         const draft = newSession();
-        draft.title = source.title.slice(0, 113).trimEnd() + ' (copia)';
+        draft.title = source.title.slice(0, 112).trimEnd() + ' (copia)';
         draft.category = source.category;
         draft.exercises = source.exercises;
         changeSession(draft);
