@@ -2012,12 +2012,6 @@ async function vuDownloadPlayerPhoto(playerId,button){
   const ext=(record.storage_path.split('.').pop()||'jpg').toLowerCase();
   const safeExt=['jpg','jpeg','png','webp'].includes(ext)?ext:'jpg';
   const name=`VOLLA_UNITED_${upper(p.last_name||'CALCIATORE').replace(/[^A-Z0-9]+/g,'_')}_${upper(p.first_name||'').replace(/[^A-Z0-9]+/g,'_')}.${safeExt}`;
-  const file=new File([blob],name,{type:blob.type||({png:'image/png',webp:'image/webp'}[safeExt]||'image/jpeg')});
-  // Su iOS il foglio di condivisione consente "Salva immagine" quando supportato.
-  if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
-   try{await navigator.share({files:[file],title:'Foto originale Volla United'});return}
-   catch(e){if(e.name==='AbortError')return;console.warn('Condivisione foto:',e)}
-  }
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),60000);
