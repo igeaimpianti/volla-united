@@ -2003,10 +2003,28 @@ async function vuDownloadPlayerPhoto(playerId,button){
   const ext=(record.storage_path.split('.').pop()||'jpg').toLowerCase();
   const safeExt=['jpg','jpeg','png','webp'].includes(ext)?ext:'jpg';
   const name=`VOLLA_UNITED_${upper(p.last_name||'CALCIATORE').replace(/[^A-Z0-9]+/g,'_')}_${upper(p.first_name||'').replace(/[^A-Z0-9]+/g,'_')}.${safeExt}`;
-  const url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
-  toast('Foto pronta per il download');
+  const mobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const file=new File([blob],name,{type:blob.type.startsWith('image/')?blob.type:({png:'image/png',webp:'image/webp'}[safeExt]||'image/jpeg')});
+  const download=()=>{
+   const url=URL.createObjectURL(file),a=document.createElement('a');
+   a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),60000);
+  };
+  if(mobile&&navigator.share&&navigator.canShare?.({files:[file]})){
+   const share=()=>navigator.share({files:[file]});
+   try{await share();}catch(err){
+    if(err.name==='AbortError')return;
+    // A slow network can expire the original tap's activation.
+    const panel=document.createElement('div');
+    panel.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#000b;display:grid;place-items:center;padding:20px';
+    const box=document.createElement('div');box.style.cssText='background:#21151f;color:white;padding:24px;border-radius:16px;max-width:360px';
+    const info=document.createElement('p');info.textContent='Foto originale pronta. Tocca Salva foto e scegli Salva immagine.';
+    const save=document.createElement('button');save.className='btn';save.textContent='Salva foto';
+    const cancel=document.createElement('button');cancel.className='btn alt';cancel.textContent='Annulla';
+    save.onclick=async()=>{try{await share();panel.remove()}catch(e){if(e.name!=='AbortError'){download();panel.remove()}}};
+    cancel.onclick=()=>panel.remove();box.append(info,save,cancel);panel.append(box);document.body.append(panel);
+   }
+  }else{download();toast('Foto pronta per il download');}
  }catch(e){console.error('Download foto originale:',e);toast('Impossibile scaricare la foto: '+(e.message||'errore'))}
  finally{if(button.isConnected){button.disabled=false;button.innerHTML=old}}
 }
