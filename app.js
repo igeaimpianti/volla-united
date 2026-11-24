@@ -1,6 +1,6 @@
 import {SUPABASE_URL,SUPABASE_ANON_KEY} from './config.js';
 import {getCalendarFixtures,calendarPage,bindCalendarPage,bindCalendarEdits,weekendDashboard,isCalendarUser,resetCalendarHome} from './calendari.js';
-import {canUseTraining,mountTraining} from './allenamento.js?v=20261125-campo-fluido-v5';
+import {canUseTraining,mountTraining} from './allenamento.js?v=20261125-anteprima-v6';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 const $=s=>document.querySelector(s), app=$('#app'), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const configured=SUPABASE_URL.startsWith('https://')&&SUPABASE_ANON_KEY!=='INSERISCI_ANON_KEY';

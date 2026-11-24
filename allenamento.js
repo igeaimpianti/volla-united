@@ -39,6 +39,7 @@ const icons = {
   minus:'M5 12h14', fit:'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5',
   cube:'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
   clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 4v5l3 2',
+  play:'M8 4l12 8-12 8z', stop:'M6 6h12v12H6z',
   more:'M5 12h.01m6.99 0h.01m6.99 0h.01'
 };
 const icon = name => `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name]}"/></svg>`;
@@ -91,6 +92,8 @@ const styles = `
 .vut-controls button {background:#22272a}
 .vut-board {background:#10201a;border-block:1px solid #37463f;overflow:hidden;position:relative}
 .vut canvas {display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+.vut canvas[data-preview] {position:absolute;inset:0;pointer-events:none}
+.vut [data-action=preview] {color:#b4f5c7}
 .vut canvas[data-mode=select] {cursor:grab}
 .vut canvas[data-mode=pan] {cursor:move}
 .vut-hint {padding:0 10px 9px;margin:0;color:var(--muted);font-size:12px;line-height:1.35}
@@ -169,7 +172,14 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         </div>
       </div>
       <p class="vut-hint" data-hint></p>
-      <div class="vut-board"><canvas width="1500" height="1000" aria-label="Lavagna del campo"></canvas></div>
+      <div class="vut-board">
+        <canvas width="1500" height="1000" aria-label="Lavagna del campo"></canvas>
+        <canvas width="1500" height="1000" data-preview aria-hidden="true" hidden></canvas>
+      </div>
+      <div class="vut-inspector" data-preview-controls hidden>
+        <button type="button" data-action="preview">${icon('play')} Anteprima esercizio</button>
+        <small data-preview-mode></small>
+      </div>
       <div class="vut-palette" aria-label="Attrezzi e percorsi">
         <button data-tool="select" type="button" aria-pressed="true">${icon('select')} Seleziona</button>
         ${Object.entries(equipment).map(([type,label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${icon(type)} ${label}</button>`).join('')}
@@ -199,6 +209,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   const list = find('[data-sessions]');
   const canvas = find('canvas');
   const status = find('[role=status]');
+  const previewCanvas = find('[data-preview]');
   let session = newSession();
   let sessions = [];
   let index = 0;
@@ -218,6 +229,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let frame = null;
   let exporting = false;
   let loadingArchive = true;
+  let playback = null;
   const exercise = () => session.exercises[index];
 
   function markDirty(value = true) {
@@ -251,6 +263,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   }
 
   function openExercise(next) {
+    stopPreview();
     index = next;
     selected = -1;
     routeStart = null;
@@ -308,11 +321,87 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     });
   }
 
+  function updatePreview() {
+    const objects = exercise().objects;
+    const hasRun = objects.some(object => object.type === 'run' && object.end);
+    const hasCircuit = objects.filter(isCircuitEquipment).length >= 2;
+    find('[data-preview-controls]').hidden = !(hasRun || hasCircuit);
+    find('[data-preview-mode]').textContent = hasRun ? 'Segue la freccia di corsa' : 'Segue l’ordine degli attrezzi';
+  }
+
+  function stopPreview() {
+    if (!playback) return;
+    cancelAnimationFrame(playback.frame);
+    playback = null;
+    previewCanvas.hidden = true;
+    action('preview').innerHTML = icon('play') + ' Anteprima esercizio';
+  }
+
+  function startPreview() {
+    const objects = exercise().objects;
+    const route = previewRoute(objects,selected);
+    if (!route) return;
+    const duration = clamp(route.length*115,2800,18000);
+    const context = previewCanvas.getContext('2d');
+    playback = {start:null,frame:null};
+    previewCanvas.hidden = false;
+    action('preview').innerHTML = icon('stop') + ' Ferma anteprima';
+    function tick(time) {
+      if (!playback || !canvas.isConnected) return stopPreview();
+      playback.start ??= time;
+      const progress = clamp((time-playback.start)/duration,0,1);
+      renderPreview(context,route,progress);
+      if (progress < 1) playback.frame = requestAnimationFrame(tick);
+      else stopPreview();
+    }
+    playback.frame = requestAnimationFrame(tick);
+  }
+
+  function renderPreview(context,route,progress) {
+    context.clearRect(0,0,previewCanvas.width,previewCanvas.height);
+    const distance = route.length*progress;
+    const step = route.segments.find(part => distance <= part.start+part.length) || route.segments.at(-1);
+    const fraction = clamp((distance-step.start)/step.length,0,1);
+    const x = step.a[0]+(step.b[0]-step.a[0])*fraction;
+    const y = step.a[1]+(step.b[1]-step.a[1])*fraction;
+    const rise = route.jumps.reduce((jump,d) => {
+      const phase = Math.abs(d-distance)/2.8;
+      return Math.max(jump,phase < 1 ? Math.cos(phase*Math.PI/2) : 0);
+    },0);
+    const [groundX,groundY] = at(x,y);
+    const [px,py] = at(x,y,view3d ? rise*6 : 0);
+    const unit = screenUnits(1);
+    const bob = view3d ? py : py-rise*12*unit;
+    const radius = 7*unit;
+    context.beginPath();
+    context.ellipse(groundX,groundY+2*unit,9*unit,3*unit,0,0,Math.PI*2);
+    context.fillStyle = '#102218a0';
+    context.fill();
+    const [aheadX,aheadY] = at(step.b[0],step.b[1]);
+    const [backX,backY] = at(step.a[0],step.a[1]);
+    const direction = Math.atan2(aheadY-backY,aheadX-backX);
+    context.beginPath();
+    context.moveTo(px+Math.cos(direction)*12*unit,bob+Math.sin(direction)*12*unit);
+    context.lineTo(px+Math.cos(direction+.6)*radius,bob+Math.sin(direction+.6)*radius);
+    context.lineTo(px+Math.cos(direction-.6)*radius,bob+Math.sin(direction-.6)*radius);
+    context.closePath();
+    context.fillStyle = '#fff';
+    context.fill();
+    context.beginPath();
+    context.arc(px,bob,radius,0,Math.PI*2);
+    context.fillStyle = rise > .1 ? '#edbf42' : '#e24263';
+    context.fill();
+    context.lineWidth = 2*unit;
+    context.strokeStyle = '#fff';
+    context.stroke();
+  }
+
   function paint() {
     const objects = exercise().objects;
     const entry = objects[selected];
     const rotation = selectionRotation(entry);
     queueBoard();
+    updatePreview();
     canvas.dataset.mode = tool;
     action('remove-object').disabled = busy || !entry;
     action('rotate-object').disabled = action('object-left').disabled = busy || rotation === null;
@@ -498,6 +587,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   canvas.onpointerdown = event => {
     if (busy || event.button !== 0) return;
+    stopPreview();
     if (event.isPrimary && pointers.size) resetPointers();
     if (pointers.size >= 2) return;
     if (!pointers.size) watchPointers();
@@ -607,7 +697,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   function setBusy(value) {
     busy = value;
-    if (value) resetPointers();
+    if (value) {
+      resetPointers();
+      stopPreview();
+    }
     for (const control of host.querySelectorAll('button,input,select,textarea')) control.disabled = value;
     if (!value) {
       action('pdf').disabled = exporting;
@@ -697,11 +790,17 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (!button || busy) return;
     if (button.dataset.exercise != null) return openExercise(Number(button.dataset.exercise));
     if (button.dataset.tool) {
+      stopPreview();
       setTool(button.dataset.tool);
       return paint();
     }
     if (button.closest('.vut-menu')) button.closest('details').open = false;
+    if (['remove-object','rotate-object','object-left','undo'].includes(button.dataset.action)) stopPreview();
     switch (button.dataset.action) {
+      case 'preview':
+        if (playback) stopPreview();
+        else startPreview();
+        break;
       case 'new':
         if (!dirty || confirm('Abbandonare le modifiche non salvate?')) {
           changeSession(newSession());
@@ -907,6 +1006,71 @@ function orientObject(object,rotation) {
   const ny = clamp(y,-minY*scale,64-maxY*scale);
   const absolute = ([dx,dy]) => limitPoint([nx+dx*scale,ny+dy*scale]);
   return {...object,x:nx,y:ny,end:absolute(offsets[1]),...(control ? {control:absolute(offsets[2])} : {})};
+}
+
+function isCircuitEquipment(object) {
+  return ['disc','cone','hurdle','ladder','pole','goal'].includes(object.type);
+}
+
+function previewRoute(objects,selected) {
+  const runs = objects.filter(object => object.type === 'run' && object.end);
+  const active = objects[selected];
+  const run = runs.includes(active) ? active : runs[0];
+  const equipment = objects.filter(isCircuitEquipment);
+  let points;
+  if (run) {
+    points = routePoints(run);
+  } else {
+    if (equipment.length < 2) return null;
+    const stations = equipment.map(({x,y}) => [x,y]);
+    let side = 1;
+    points = stations.map(([x,y],i) => {
+      if (!['disc','cone','pole'].includes(equipment[i].type)) return [x,y];
+      const a = stations[Math.max(0,i-1)];
+      const b = stations[Math.min(stations.length-1,i+1)];
+      const dx = b[0]-a[0];
+      const dy = b[1]-a[1];
+      const length = Math.hypot(dx,dy) || 1;
+      side *= -1;
+      return limitPoint([x-dy/length*1.9*side,y+dx/length*1.9*side]);
+    });
+    const extend = (a,b) => {
+      const dx = a[0]-b[0];
+      const dy = a[1]-b[1];
+      const length = Math.hypot(dx,dy) || 1;
+      return limitPoint([a[0]+dx/length*4,a[1]+dy/length*4]);
+    };
+    points = [extend(points[0],points[1]),...points,extend(points.at(-1),points.at(-2))];
+  }
+
+  const segments = [];
+  let length = 0;
+  for (let i=1;i<points.length;i++) {
+    const a = points[i-1];
+    const b = points[i];
+    const distance = Math.hypot(b[0]-a[0],b[1]-a[1]);
+    if (distance < .01) continue;
+    segments.push({a,b,start:length,length:distance});
+    length += distance;
+  }
+  if (!segments.length) return null;
+  const jumps = [];
+  for (const {x,y} of equipment.filter(object => object.type === 'hurdle')) {
+    let closest = 2.4;
+    let crossing = null;
+    for (const {a,b,start,length:segmentLength} of segments) {
+      const dx = b[0]-a[0];
+      const dy = b[1]-a[1];
+      const t = clamp(((x-a[0])*dx+(y-a[1])*dy)/segmentLength**2,0,1);
+      const distance = Math.hypot(x-a[0]-dx*t,y-a[1]-dy*t);
+      if (distance < closest) {
+        closest = distance;
+        crossing = start+t*segmentLength;
+      }
+    }
+    if (crossing !== null) jumps.push(crossing);
+  }
+  return {segments,length,jumps};
 }
 
 function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null) {
