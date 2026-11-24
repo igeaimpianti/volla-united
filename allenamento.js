@@ -22,70 +22,175 @@ function newSession() {
   return {id: crypto.randomUUID(), title: '', training_date: date, category: '', exercises: [newExercise()]};
 }
 
+const icons = {
+  field:'M3 4h18v16H3zM12 4v16M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  archive:'M3 5h18v4H3zM5 9v11h14V9m-9 4h4',
+  new:'M12 5v14M5 12h14', save:'M4 3h13l3 3v15H4zM8 3v5h8V3M8 21v-8h8v8',
+  pdf:'M13 3H5v18h14V9l-6-6zm0 0v6h6m-7 2v6m-3-3 3 3 3-3',
+  copy:'M8 8h12v12H8zM16 8V4H4v12h4', trash:'M4 6h16M9 6V3h6v3m3 0-1 15H7L6 6m4 4v7m4-7v7',
+  select:'M4 3l15 10-7 1-3 7z', pan:'M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3',
+  player:'M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 21v-3a7 7 0 0 1 14 0v3', opponent:'M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 21v-3a7 7 0 0 1 14 0v3',
+  ball:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 5 4 3-2 5h-4l-2-5 4-3zm0 0V3m8 6-4 2m-2 5 3 4m-7-4-3 4m1-9L4 9',
+  disc:'M3 17h18l-4-7H7zM10 10h4', cone:'M3 20h18M7 20l4-16h2l4 16M9 12h6',
+  hurdle:'M4 20V7h16v13M2 20h5m10 0h5', ladder:'M7 3v18M17 3v18M7 5h10M7 10h10M7 15h10M7 20h10',
+  goal:'M3 19V6h18v13M3 9h18M7 9v10m5-10v10m5-10v10M3 14h18',
+  pole:'M12 3v17M6 21h12', run:'M3 18 17 6m-7 0h7v7', pass:'M4 18l2-2m3-3 2-2m3-3 3-3m-7 0h7v7',
+  left:'M4 5v6h6M4 11a8 8 0 1 1 3 7', right:'M20 5v6h-6m6 0a8 8 0 1 0-3 7',
+  minus:'M5 12h14', fit:'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5',
+  cube:'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
+  clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 4v5l3 2',
+  more:'M5 12h.01m6.99 0h.01m6.99 0h.01'
+};
+const icon = name => `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="${icons[name]}"/></svg>`;
+const iconButton = (action, label, image, attributes = '') =>
+  `<button type="button" class="vut-icon" data-action="${action}" aria-label="${label}" title="${label}" ${attributes}>${icon(image)}</button>`;
+
 const styles = `
 <style>
-.vut {color:#f7f5f5;background:#151316;border:1px solid #382f35;border-radius:18px;padding:clamp(12px,3vw,24px);margin:16px 0}
-.vut h1 {font-size:clamp(27px,5vw,42px);margin:0 0 10px}
-.vut h2 {font-size:17px;margin:0 0 8px}
-.vut button,.vut input,.vut select,.vut textarea {font:inherit;color:inherit;background:#221e23;border:1px solid #51464e;border-radius:8px;padding:8px 11px;min-width:0}
-.vut button {cursor:pointer;min-height:42px}
-.vut button[aria-pressed=true],.vut button[data-action=save] {background:#ac1935;border-color:#ec5572;color:#fff}
-.vut button:disabled {opacity:.5;cursor:default}
-.vut label {display:grid;gap:4px;font-size:13px}
-.vut .vut-row {display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:9px 0}
-.vut .vut-grid {display:grid;grid-template-columns:minmax(0,2fr) repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
-.vut .vut-board {background:#0c1413;border:1px solid #394642;border-radius:12px;overflow:hidden}
-.vut canvas {display:block;width:100%;height:auto;touch-action:none}
-.vut [role=status] {min-height:1.4em;color:#f2c2ce;font-size:14px}
-.vut textarea {resize:vertical;width:100%;box-sizing:border-box}
-.vut .vut-toolbar {gap:5px}
-.vut .vut-toolbar button {font-size:13px}
-@media(max-width:560px){.vut .vut-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vut .vut-grid label:first-child{grid-column:1/-1}}
+.vut {--line:#323037;--panel:#18191e;--muted:#aaaab7;--accent:#ff566f;color:#f8f7fa;margin:14px 0;min-width:0}
+.vut * {box-sizing:border-box}
+.vut [hidden] {display:none!important}
+.vut h1,.vut h2 {margin:0;letter-spacing:-.035em}
+.vut h1 {font-size:clamp(23px,5vw,33px);line-height:1.1}
+.vut h2 {font-size:17px}
+.vut svg {width:20px;height:20px;flex:none}
+.vut-card {background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:clamp(11px,2.4vw,18px);margin-bottom:10px;min-width:0}
+.vut-head,.vut-between,.vut-row {display:flex;gap:8px;align-items:center}
+.vut-head,.vut-between {justify-content:space-between}
+.vut-row {flex-wrap:wrap}
+.vut-brand {display:flex;align-items:center;gap:10px;min-width:0}
+.vut-brand>span {display:grid;place-items:center;width:42px;height:42px;background:#3e2029;color:var(--accent);border-radius:11px;flex:none}
+.vut-brand svg {width:24px;height:24px}
+.vut button,.vut input,.vut select,.vut textarea,.vut summary {font:inherit;color:inherit;background:#222329;border:1px solid var(--line);border-radius:9px;min-width:0;max-width:100%}
+.vut button,.vut summary {cursor:pointer;min-height:42px;padding:7px 11px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:650;line-height:1.15}
+.vut button:focus-visible,.vut summary:focus-visible,.vut input:focus-visible,.vut select:focus-visible,.vut textarea:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+.vut button[aria-pressed=true] {background:#40222c;border-color:#b7455b;color:#ffdbe2}
+.vut button[data-action=save] {background:#bc2441;border-color:#ed5a71;color:#fff}
+.vut button:disabled {opacity:.42;cursor:default}
+.vut button.vut-icon,.vut summary.vut-icon {width:42px;padding:0;flex:none}
+.vut-heading-actions {display:flex;align-items:center;gap:6px;flex:none}
+.vut-menu {position:relative}
+.vut-menu summary::-webkit-details-marker {display:none}
+.vut-menu>div {position:absolute;right:0;top:calc(100% + 6px);z-index:5;background:#1e1e25;border:1px solid #47434c;border-radius:10px;padding:5px;display:grid;min-width:170px;box-shadow:0 12px 25px #0008}
+.vut-menu button {justify-content:flex-start;background:none;border-color:transparent;white-space:nowrap}
+.vut label {display:grid;gap:4px;font-size:12px;font-weight:650;color:#ccccd6;min-width:0}
+.vut input,.vut select,.vut textarea {display:block;width:100%;min-height:42px;margin:0;padding:8px 10px;font-size:16px;font-weight:450;color-scheme:dark}
+.vut input[type=date] {min-inline-size:0;-webkit-appearance:none;appearance:none}
+.vut input[type=date]::-webkit-date-and-time-value {text-align:left;min-height:20px}
+.vut-grid {display:grid;grid-template-columns:minmax(0,2fr) repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.vut-archive {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;margin-top:12px}
+.vut-archive select {text-overflow:ellipsis}
+.vut small,.vut-meta {color:var(--muted);font-size:12px;font-weight:600}
+.vut-exercises {display:flex;overflow:auto;gap:6px;margin-top:8px;padding:2px 2px 5px}
+.vut-exercises button {flex:none;max-width:210px}
+.vut-exercises button span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vut-exercises small {white-space:nowrap}
+.vut-stage {padding:0;overflow:hidden}
+.vut-stage-header,.vut-inspector {display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:8px 10px}
+.vut-controls {display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.vut-controls button {background:#22272a}
+.vut-board {background:#10201a;border-block:1px solid #37463f;overflow:hidden;position:relative}
+.vut canvas {display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+.vut canvas[data-mode=select] {cursor:grab}
+.vut canvas[data-mode=pan] {cursor:move}
+.vut-hint {padding:0 10px 9px;margin:0;color:var(--muted);font-size:12px;line-height:1.35}
+.vut-palette {display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:9px 10px;border-top:1px solid var(--line)}
+.vut-palette button {display:grid;justify-items:center;gap:3px;padding:6px 1px;font-size:clamp(9px,2.4vw,11px);min-height:49px;letter-spacing:-.02em}
+.vut-palette svg {color:#b4b9c9}
+.vut-palette [data-tool=player] svg,.vut-palette [data-tool=disc] svg {color:#ff6b91}
+.vut-palette [data-tool=opponent] svg,.vut-palette [data-tool=pass] svg {color:#72d5ff}
+.vut-palette [data-tool=hurdle] svg,.vut-palette [data-tool=ladder] svg,.vut-palette [data-tool=run] svg {color:#eeef74}
+.vut-palette [data-tool=cone] svg,.vut-palette [data-tool=pole] svg {color:#ffb46b}
+.vut-inspector {border-top:1px solid var(--line)}
+.vut-inspector strong {font-size:13px}
+.vut-inspector label {display:flex;align-items:center;gap:5px}
+.vut-inspector select {width:auto}
+.vut-inspector input {width:78px}
+.vut-exercise-details {display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,120px);gap:8px}
+.vut-exercise-details>label:last-child {grid-column:1/-1}
+.vut textarea {resize:vertical}
+.vut-status {color:#ffc0cf;font-size:13px;margin:6px 0 0}
+.vut-status:empty {display:none}
+@media(max-width:560px){
+  .vut-grid {grid-template-columns:repeat(2,minmax(0,1fr))}
+  .vut-grid label:first-child {grid-column:1/-1}
+  .vut-heading-actions>button span {display:none}
+  .vut-heading-actions>button {width:42px;padding:0}
+}
+@media(max-width:370px) {.vut-brand>span {display:none}.vut h1 {font-size:22px}}
+@media(min-width:720px) {.vut-palette {grid-template-columns:repeat(12,minmax(0,1fr))}}
 </style>`;
 
 export async function mountTraining(host, client, profile, categoryNames, onDirty) {
   if (!canUseTraining(profile)) return;
   host.innerHTML = styles + `
   <section class="vut" aria-label="Modulo Allenamento">
-    <h1>Allenamento</h1>
-    <div class="vut-row">
-      <label>Archivio sedute<select data-sessions><option value="">Nuova seduta</option></select></label>
-      <button data-action="new" type="button">Nuova seduta</button>
-      <button data-action="save" type="button">Salva seduta</button>
-      <button data-action="pdf" type="button">Scarica PDF</button>
-      <button data-action="copy" type="button" disabled>Duplica seduta</button>
-      <button data-action="delete" type="button" disabled>Elimina seduta</button>
+    <div class="vut-card">
+      <div class="vut-head">
+        <div class="vut-brand"><span>${icon('field')}</span><h1>Allenamento</h1></div>
+        <div class="vut-heading-actions">
+          <button data-action="save" aria-label="Salva seduta" title="Salva seduta" type="button">${icon('save')}<span>Salva</span></button>
+          <button data-action="pdf" aria-label="Scarica PDF" title="Scarica PDF" type="button">${icon('pdf')}<span>PDF</span></button>
+          <details class="vut-menu"><summary class="vut-icon" aria-label="Azioni seduta" title="Azioni seduta">${icon('more')}</summary><div>
+            <button data-action="copy" type="button" disabled>${icon('copy')} Duplica seduta</button>
+            <button data-action="delete" type="button" disabled>${icon('trash')} Elimina seduta</button>
+          </div></details>
+        </div>
+      </div>
+      <div class="vut-archive">
+        <label>Archivio sedute<select data-sessions><option value="">Nuova seduta</option></select></label>
+        ${iconButton('new','Nuova seduta','new')}
+      </div>
+      <div class="vut-grid">
+        <label>Titolo seduta<input name="title" maxlength="120" placeholder="Es. Coordinazione e conduzione"></label>
+        <label>Data<input name="training_date" type="date"></label>
+        <label>Categoria<input name="category" maxlength="80" list="vut-categories" placeholder="Categoria"></label>
+        <datalist id="vut-categories">${categoryNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
+      </div>
+      <p class="vut-status" role="status" aria-live="polite"></p>
     </div>
-    <div class="vut-grid">
-      <label>Titolo seduta<input name="title" maxlength="120" placeholder="Es. Coordinazione e conduzione"></label>
-      <label>Data<input name="training_date" type="date"></label>
-      <label>Categoria<input name="category" maxlength="80" list="vut-categories"></label>
-      <datalist id="vut-categories">${categoryNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
+    <div class="vut-card">
+      <div class="vut-between"><h2>Esercizi</h2><span class="vut-row vut-meta">${icon('clock')} <span data-total></span></span><div class="vut-controls" data-exercise-actions></div></div>
+      <div class="vut-exercises" aria-label="Esercizi della seduta" data-exercises></div>
     </div>
-    <h2>Esercizi <small data-total></small></h2>
-    <div class="vut-row" data-exercises></div>
-    <div class="vut-grid">
+    <div class="vut-card vut-stage">
+      <div class="vut-stage-header">
+        <div class="vut-controls" aria-label="Vista del campo">
+          <button data-action="2d" type="button" aria-pressed="true">${icon('field')} 2D</button>
+          <button data-action="3d" type="button" aria-pressed="false">${icon('cube')} 3D</button>
+          ${iconButton('rotate-left','Ruota campo a sinistra','left','hidden')}
+          ${iconButton('rotate-right','Ruota campo a destra','right','hidden')}
+        </div>
+        <div class="vut-controls" aria-label="Zoom e navigazione">
+          ${iconButton('zoom-out','Riduci zoom','minus')}
+          ${iconButton('zoom-in','Aumenta zoom','new')}
+          ${iconButton('fit','Inquadra tutto il campo','fit')}
+          <button class="vut-icon" type="button" data-tool="pan" aria-label="Sposta la visuale" title="Sposta la visuale" aria-pressed="false">${icon('pan')}</button>
+        </div>
+      </div>
+      <p class="vut-hint" data-hint></p>
+      <div class="vut-board"><canvas width="1500" height="1000" aria-label="Lavagna del campo"></canvas></div>
+      <div class="vut-palette" aria-label="Attrezzi e percorsi">
+        <button data-tool="select" type="button" aria-pressed="true">${icon('select')} Seleziona</button>
+        ${Object.entries(equipment).map(([type,label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${icon(type)} ${label}</button>`).join('')}
+      </div>
+      <div class="vut-inspector">
+        <strong data-selection>Attrezzo</strong>
+        <label data-height hidden>Altezza <select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
+        <div class="vut-controls">
+          ${iconButton('object-left','Ruota elemento a sinistra','left')}
+          ${iconButton('rotate-object','Ruota elemento a destra','right')}
+          <label data-rotation hidden>Angolo <input name="rotation" type="number" min="0" max="359" inputmode="numeric"></label>
+          ${iconButton('remove-object','Rimuovi elemento','trash')}
+          ${iconButton('undo','Annulla ultima modifica','left')}
+        </div>
+      </div>
+    </div>
+    <div class="vut-card vut-exercise-details">
       <label>Nome esercizio<input name="exercise-title" maxlength="120" placeholder="Es. Circuito a stazioni"></label>
-      <label>Durata in minuti<input name="minutes" type="number" min="1" max="180"></label>
+      <label>Durata (min)<input name="minutes" type="number" min="1" max="180"></label>
+      <label>Obiettivo e svolgimento<textarea name="notes" maxlength="3000" rows="3"></textarea></label>
     </div>
-    <label>Obiettivo e svolgimento<textarea name="notes" maxlength="3000" rows="3"></textarea></label>
-    <div class="vut-row">
-      <button data-action="2d" type="button" aria-pressed="true">Campo 2D</button>
-      <button data-action="3d" type="button" aria-pressed="false">Vista 3D</button>
-      <button data-action="rotate-left" aria-label="Ruota vista a sinistra" type="button" hidden>↶</button>
-      <button data-action="rotate-right" aria-label="Ruota vista a destra" type="button" hidden>↷</button>
-    </div>
-    <div class="vut-row vut-toolbar" data-tools>
-      <button data-tool="select" type="button" aria-pressed="true">Sposta</button>
-      ${Object.entries(equipment).map(([type, label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${label}</button>`).join('')}
-      <label>Altezza ostacolo<select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
-      <button data-action="rotate-object" type="button" disabled>Ruota attrezzo</button>
-      <button data-action="remove-object" type="button" disabled>Rimuovi elemento</button>
-      <button data-action="undo" type="button" disabled>Annulla</button>
-    </div>
-    <p data-hint>Seleziona un attrezzo e tocca il campo per posizionarlo.</p>
-    <div class="vut-board"><canvas width="1500" height="1000" aria-label="Lavagna del campo"></canvas></div>
-    <p role="status" aria-live="polite"></p>
   </section>`;
 
   const find = selector => host.querySelector(selector);
@@ -106,6 +211,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let view3d = false;
   let angle = -.15;
   let undo = [];
+  let viewport = {zoom:1,x:0,y:0};
+  const pointers = new Map();
+  let gesture = null;
   const exercise = () => session.exercises[index];
 
   function markDirty(value = true) {
@@ -143,6 +251,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     routeStart = null;
     drag = null;
     undo = [];
+    fit();
+    setTool('select');
     field('exercise-title').value = exercise().title;
     field('minutes').value = exercise().minutes;
     field('notes').value = exercise().notes;
@@ -152,11 +262,16 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   function updateExercises() {
     const total = session.exercises.reduce((sum, entry) => sum + (Number(entry.minutes) || 0), 0);
-    find('[data-total]').textContent = '· ' + total + ' min totali';
-    find('[data-exercises]').innerHTML = session.exercises.map((entry, position) =>
-      `<button type="button" data-exercise="${position}" aria-pressed="${index === position}">${escapeHtml(entry.title || `Esercizio ${position + 1}`)} · ${Number(entry.minutes) || 0} min</button>`
-    ).join('') + `<button type="button" data-action="add-exercise" ${session.exercises.length >= 30 ? 'disabled' : ''}>+ Esercizio</button>
-      <button type="button" data-action="remove-exercise" ${session.exercises.length === 1 ? 'disabled' : ''}>Elimina esercizio</button>`;
+    find('[data-total]').textContent = total + ' min totali';
+    const tabs = find('[data-exercises]');
+    const scroll = tabs.scrollLeft;
+    tabs.innerHTML = session.exercises.map((entry, position) =>
+      `<button type="button" data-exercise="${position}" aria-pressed="${index === position}"><span>${escapeHtml(entry.title || `Esercizio ${position + 1}`)}</span><small>${Number(entry.minutes) || 0} min</small></button>`
+    ).join('');
+    tabs.scrollLeft = scroll;
+    find('[data-exercise-actions]').innerHTML =
+      iconButton('add-exercise','Aggiungi esercizio','new',session.exercises.length >= 30 ? 'disabled' : '') +
+      iconButton('remove-exercise','Elimina esercizio','trash',session.exercises.length === 1 ? 'disabled' : '');
   }
 
   function snapshot() {
@@ -164,77 +279,214 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (undo.length > 30) undo.shift();
   }
 
-  function paint() {
-    const objects = exercise().objects;
-    drawField(canvas, objects, view3d, angle, selected, routeStart);
-    action('remove-object').disabled = selected < 0 || view3d;
-    action('rotate-object').disabled = view3d || !['hurdle','goal','ladder'].includes(objects[selected]?.type);
-    action('undo').disabled = !undo.length || view3d;
-    find('[data-hint]').textContent = view3d ? 'Ruota la visuale per osservare il campo da più lati.'
-      : routeStart ? 'Tocca la destinazione del percorso.'
-      : tool === 'select' ? 'Trascina gli elementi sul campo oppure scegli un attrezzo.'
-      : 'Tocca il campo per posizionare: ' + equipment[tool] + '.';
+  function selectionRotation(entry) {
+    if (!entry) return null;
+    if (entry.end) return (Math.round(Math.atan2(entry.end[1]-entry.y,entry.end[0]-entry.x)*180/Math.PI)+360)%360;
+    return ['hurdle','goal','ladder','player','opponent'].includes(entry.type) ? entry.rotation || 0 : null;
   }
 
-  function pointerLocation(event) {
+  function paint() {
+    const objects = exercise().objects;
+    const entry = objects[selected];
+    const rotation = selectionRotation(entry);
+    drawField(canvas, objects, view3d, angle, selected, routeStart, viewport);
+    canvas.dataset.mode = tool;
+    action('remove-object').disabled = busy || !entry;
+    action('rotate-object').disabled = action('object-left').disabled = busy || rotation === null;
+    action('undo').disabled = busy || !undo.length;
+    action('zoom-in').disabled = busy || viewport.zoom >= 4;
+    action('zoom-out').disabled = busy || viewport.zoom <= 1;
+    const height = field('height');
+    find('[data-height]').hidden = entry?.type !== 'hurdle' && tool !== 'hurdle';
+    if (entry?.type === 'hurdle') height.value = entry.height || 15;
+    find('[data-rotation]').hidden = rotation === null;
+    if (document.activeElement !== field('rotation')) field('rotation').value = rotation ?? '';
+    find('[data-selection]').textContent = entry ? equipment[entry.type] + ' selezionato' : 'Nessun elemento selezionato';
+    find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
+      : routeStart ? 'Tocca la destinazione della freccia.'
+      : tool === 'select' ? 'Tocca per selezionare un elemento o trascinalo per spostarlo.'
+      : 'Tocca il campo per aggiungere: ' + equipment[tool] + '.';
+  }
+
+  function setTool(next) {
+    tool = next;
+    routeStart = null;
+    if (tool !== 'select' && tool !== 'pan') selected = -1;
+    host.querySelectorAll('[data-tool]').forEach(button =>
+      button.setAttribute('aria-pressed', String(button.dataset.tool === tool)));
+  }
+
+  function cameraFor(zoom, screenPoint, worldPoint) {
+    return {
+      zoom,
+      x:clamp(screenPoint[0]-worldPoint[0]*zoom,canvas.width*(1-zoom),0),
+      y:clamp(screenPoint[1]-worldPoint[1]*zoom,canvas.height*(1-zoom),0)
+    };
+  }
+
+  function zoomAt(zoom, point) {
+    viewport = cameraFor(clamp(zoom,1,4), point, viewPoint(point, viewport));
+    paint();
+  }
+
+  function screenPoint(event) {
     const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
-    return [Math.max(0, Math.min(100, (x - .06) / .88 * 100)), Math.max(0, Math.min(64, (y - .09) / .82 * 64))];
+    return [(event.clientX-rect.left)*canvas.width/rect.width, (event.clientY-rect.top)*canvas.height/rect.height];
+  }
+
+  function pitchPoint(point) {
+    return unproject(canvas,view3d,angle,viewPoint(point,viewport));
+  }
+
+  function fit() {
+    viewport = {zoom:1,x:0,y:0};
+  }
+
+  function pickObject(point) {
+    const screenRadius = 21*canvas.width/canvas.getBoundingClientRect().width;
+    let best = screenRadius;
+    let picked = -1;
+    exercise().objects.forEach((entry,index) => {
+      const at = (x,y,z) => {
+        const [px,py] = projectPoint(canvas,view3d,angle,x,y,z);
+        return [px*viewport.zoom+viewport.x,py*viewport.zoom+viewport.y];
+      };
+      const base = at(entry.x,entry.y);
+      let distance = Math.hypot(point[0]-base[0],point[1]-base[1]);
+      if (entry.end) distance = segmentDistance(point,base,at(...entry.end));
+      const z = {hurdle:(entry.height || 15)/10,goal:3,player:3,opponent:3,pole:6,cone:2.9}[entry.type];
+      if (view3d && z) distance = segmentDistance(point,base,at(entry.x,entry.y,z));
+      if (distance <= best) {
+        best = distance;
+        picked = index;
+      }
+    });
+    return picked;
+  }
+
+  function place(point) {
+    const [x,y] = pitchPoint(point);
+    if (x < 0 || x > 100 || y < 0 || y > 64) return;
+    const objects = exercise().objects;
+    if (objects.length >= 90) {
+      find('[data-hint]').textContent = 'Massimo 90 elementi per esercizio.';
+      return;
+    }
+    const entry = {type:tool,x,y};
+    if (tool === 'run' || tool === 'pass') {
+      if (!routeStart) {
+        routeStart = [x,y];
+        paint();
+        return;
+      }
+      if (Math.hypot(x-routeStart[0],y-routeStart[1]) < 1) return;
+      [entry.x,entry.y] = routeStart;
+      entry.end = [x,y];
+    } else if (tool === 'hurdle') {
+      entry.height = Number(field('height').value);
+    }
+    snapshot();
+    selected = objects.push(entry)-1;
+    setTool('select');
+    markDirty();
+    paint();
+  }
+
+  function pinchState() {
+    const [a,b] = pointers.values();
+    return {center:[(a[0]+b[0])/2,(a[1]+b[1])/2], distance:Math.max(1,Math.hypot(a[0]-b[0],a[1]-b[1]))};
   }
 
   canvas.onpointerdown = event => {
-    if (view3d || busy || !event.isPrimary || event.button !== 0) return;
-    const [x, y] = pointerLocation(event);
-    const objects = exercise().objects;
-    if (tool === 'select') {
-      selected = objects.findLastIndex(entry => Math.hypot(entry.x-x, entry.y-y) < 4
-        || (entry.end && Math.hypot(entry.end[0]-x, entry.end[1]-y) < 4));
-      if (selected >= 0) {
-        const entry = objects[selected];
-        drag = {id:event.pointerId, x, y, original:structuredClone(entry), moved:false};
-        canvas.setPointerCapture(event.pointerId);
-      }
-    } else if (objects.length < 90) {
-      if (['run','pass'].includes(tool)) {
-        if (routeStart) {
-          if (Math.hypot(x-routeStart[0], y-routeStart[1]) < 1) return;
-          snapshot();
-          selected = objects.push({type:tool, x:routeStart[0], y:routeStart[1], end:[x,y]}) - 1;
-          routeStart = null;
-          markDirty();
-        } else {
-          routeStart = [x,y];
-        }
-      } else {
-        snapshot();
-        selected = objects.push({type:tool, x, y, height:Number(field('height').value), rotation:0}) - 1;
-        markDirty();
-      }
-    } else {
-      status.textContent = 'Massimo 90 elementi per esercizio.';
+    if (busy || event.button !== 0 || pointers.size >= 2) return;
+    const point = screenPoint(event);
+    pointers.set(event.pointerId,point);
+    canvas.setPointerCapture(event.pointerId);
+    if (pointers.size === 2) {
+      const state = pinchState();
+      gesture = {...state, zoom:viewport.zoom, anchor:viewPoint(state.center,viewport)};
+      drag = null;
+      return;
     }
+    const [x,y] = pitchPoint(point);
+    if (tool === 'select') selected = pickObject(point);
+    drag = {
+      id:event.pointerId, point, x, y, moved:false, viewport,
+      original:tool === 'select' && selected >= 0 ? structuredClone(exercise().objects[selected]) : null
+    };
     paint();
   };
 
   canvas.onpointermove = event => {
+    if (!pointers.has(event.pointerId) || busy) return;
+    const point = screenPoint(event);
+    pointers.set(event.pointerId,point);
+    if (gesture) {
+      const state = pinchState();
+      viewport = cameraFor(clamp(gesture.zoom*state.distance/gesture.distance,1,4),state.center,gesture.anchor);
+      paint();
+      return;
+    }
     if (drag?.id !== event.pointerId) return;
-    const [x,y] = pointerLocation(event);
-    if (!drag.moved && Math.hypot(x-drag.x,y-drag.y) < .25) return;
-    if (!drag.moved) snapshot();
+    const [startX,startY] = drag.point;
+    const threshold = 3*canvas.width/canvas.getBoundingClientRect().width;
+    if (!drag.moved && Math.hypot(point[0]-startX,point[1]-startY) < threshold) return;
+    if (tool === 'pan') {
+      viewport = cameraFor(drag.viewport.zoom,point,viewPoint(drag.point,drag.viewport));
+    } else if (drag.original) {
+      const [x,y] = pitchPoint(point);
+      if (!drag.moved) snapshot();
+      const {original} = drag;
+      exercise().objects[selected] = moveObject(original,x-drag.x,y-drag.y);
+      markDirty();
+    }
     drag.moved = true;
-    const {original} = drag;
-    const points = original.end ? [[original.x,original.y],original.end] : [[original.x,original.y]];
-    const dx = Math.max(-Math.min(...points.map(p => p[0])), Math.min(100-Math.max(...points.map(p => p[0])), x-drag.x));
-    const dy = Math.max(-Math.min(...points.map(p => p[1])), Math.min(64-Math.max(...points.map(p => p[1])), y-drag.y));
-    const moved = {...original, x:original.x+dx, y:original.y+dy};
-    if (original.end) moved.end = [original.end[0]+dx,original.end[1]+dy];
-    exercise().objects[selected] = moved;
-    markDirty();
     paint();
   };
-  canvas.onpointerup = canvas.onlostpointercapture = canvas.onpointercancel = event => {
-    if (drag?.id === event.pointerId) drag = null;
+
+  function endPointer(event, complete) {
+    if (!pointers.delete(event.pointerId)) return;
+    gesture = null;
+    const active = drag;
+    drag = null;
+    if (complete && !busy && active?.id === event.pointerId && !active.moved && tool !== 'select' && tool !== 'pan') {
+      place(screenPoint(event));
+    }
+  }
+
+  canvas.onpointerup = event => endPointer(event,true);
+  canvas.onpointercancel = canvas.onlostpointercapture = event => endPointer(event,false);
+  canvas.addEventListener('wheel', event => {
+    if (busy || (!event.ctrlKey && !event.metaKey && tool !== 'pan')) return;
+    event.preventDefault();
+    zoomAt(viewport.zoom*Math.exp(-event.deltaY*.002),screenPoint(event));
+  },{passive:false});
+
+  function rotateSelection(degrees) {
+    const entry = exercise().objects[selected];
+    const current = selectionRotation(entry);
+    if (current === null) return;
+    const rotation = (Math.round(degrees)%360+360)%360;
+    if (current === rotation) return;
+    snapshot();
+    exercise().objects[selected] = orientObject(entry,rotation);
+    markDirty();
+    paint();
+  }
+
+  field('rotation').onchange = () => {
+    if (field('rotation').value === '') return;
+    rotateSelection(Number(field('rotation').value));
+    field('rotation').value = selectionRotation(exercise().objects[selected]) ?? '';
+  };
+
+  field('height').onchange = () => {
+    const entry = exercise().objects[selected];
+    if (entry?.type !== 'hurdle') return;
+    snapshot();
+    entry.height = Number(field('height').value);
+    markDirty();
+    paint();
   };
 
   function setBusy(value) {
@@ -302,12 +554,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (!button || busy) return;
     if (button.dataset.exercise != null) return openExercise(Number(button.dataset.exercise));
     if (button.dataset.tool) {
-      tool = button.dataset.tool;
-      routeStart = null;
-      find('[data-tools]').querySelectorAll('[data-tool]').forEach(item =>
-        item.setAttribute('aria-pressed', String(item.dataset.tool === tool)));
+      setTool(button.dataset.tool);
       return paint();
     }
+    if (button.closest('.vut-menu')) button.closest('details').open = false;
     switch (button.dataset.action) {
       case 'new':
         if (!dirty || confirm('Abbandonare le modifiche non salvate?')) {
@@ -380,8 +630,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         action('2d').setAttribute('aria-pressed', String(!view3d));
         action('3d').setAttribute('aria-pressed', String(view3d));
         action('rotate-left').hidden = action('rotate-right').hidden = !view3d;
-        find('[data-tools]').hidden = view3d;
-        find('[data-tools]').style.display = view3d ? 'none' : '';
+        fit();
         routeStart = null;
         paint();
         break;
@@ -390,12 +639,18 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         angle += button.dataset.action === 'rotate-left' ? -.25 : .25;
         paint();
         break;
-      case 'rotate-object':
-        if (selected < 0) return;
-        snapshot();
-        exercise().objects[selected].rotation = ((exercise().objects[selected].rotation || 0) + 45) % 360;
-        markDirty();
+      case 'zoom-in':
+      case 'zoom-out':
+        zoomAt(viewport.zoom*(button.dataset.action === 'zoom-in' ? 1.35 : 1/1.35),[canvas.width/2,canvas.height/2]);
+        break;
+      case 'fit':
+        fit();
         paint();
+        break;
+      case 'object-left':
+      case 'rotate-object':
+        rotateSelection((selectionRotation(exercise().objects[selected]) ?? 0) +
+          (button.dataset.action === 'object-left' ? -15 : 15));
         break;
       case 'remove-object':
         if (selected < 0) return;
@@ -423,21 +678,69 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   });
 }
 
-function drawField(canvas, objects, perspective, angle, selected, routeStart) {
+const clamp = (value,min,max) => Math.min(max,Math.max(min,value));
+const viewPoint = ([x,y], {zoom,x:left,y:top}) => [(x-left)/zoom,(y-top)/zoom];
+
+function projectPoint({width:w,height:h}, perspective, angle, x, y, z = 0) {
+  if (!perspective) return [w*(.06 + .88*x/100),h*(.09 + .82*y/64)];
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = x-50;
+  const dy = y-32;
+  const right = dx*cos-dy*sin;
+  const depth = dx*sin+dy*cos;
+  const scale = 1 / (1 - depth*.004);
+  return [w/2+right*10*scale, h*.53+(depth*7-z*11)*scale];
+}
+
+function unproject({width:w,height:h}, perspective, angle, [x,y]) {
+  if (!perspective) return [(x/w-.06)/.88*100,(y/h-.09)/.82*64];
+  const vertical = y-h*.53;
+  const depth = vertical/(7+.004*vertical);
+  const right = (x-w/2)*(1-depth*.004)/10;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [50+right*cos+depth*sin,32-right*sin+depth*cos];
+}
+
+function segmentDistance([x,y],[ax,ay],[bx,by]) {
+  const dx = bx-ax;
+  const dy = by-ay;
+  const fraction = clamp(((x-ax)*dx+(y-ay)*dy)/(dx*dx+dy*dy || 1),0,1);
+  return Math.hypot(x-ax-fraction*dx,y-ay-fraction*dy);
+}
+
+function moveObject(object,dx,dy) {
+  const {x,y,end} = object;
+  const [ex,ey] = end || [x,y];
+  dx = clamp(dx,-Math.min(x,ex),100-Math.max(x,ex));
+  dy = clamp(dy,-Math.min(y,ey),64-Math.max(y,ey));
+  const moved = {...object,x:x+dx,y:y+dy};
+  if (end) moved.end = [ex+dx,ey+dy];
+  return moved;
+}
+
+function orientObject(object,rotation) {
+  if (!object.end) return {...object,rotation};
+  const {x,y,end} = object;
+  const length = Math.hypot(end[0]-x,end[1]-y);
+  const radians = rotation*Math.PI/180;
+  const dx = Math.cos(radians)*length;
+  const dy = Math.sin(radians)*length;
+  const maxX = Math.abs(dx) > 1e-9 ? 100/Math.abs(dx) : Infinity;
+  const maxY = Math.abs(dy) > 1e-9 ? 64/Math.abs(dy) : Infinity;
+  const scale = Math.min(1,maxX,maxY);
+  const nx = clamp(x,Math.max(0,-dx*scale),Math.min(100,100-dx*scale));
+  const ny = clamp(y,Math.max(0,-dy*scale),Math.min(64,64-dy*scale));
+  return {...object,x:nx,y:ny,end:[clamp(nx+dx*scale,0,100),clamp(ny+dy*scale,0,64)]};
+}
+
+function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}) {
   const ctx = canvas.getContext('2d');
   const {width:w,height:h} = canvas;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-
-  function project(x,y,z = 0) {
-    if (!perspective) return [w*(.06 + .88*x/100),h*(.09 + .82*y/64)];
-    const dx = x-50;
-    const dy = y-32;
-    const right = dx*cos-dy*sin;
-    const depth = dx*sin+dy*cos;
-    const scale = 1 / (1 - depth*.004);
-    return [w/2+right*10*scale, h*.53+(depth*7-z*11)*scale];
-  }
+  const project = (x,y,z) => projectPoint(canvas,perspective,angle,x,y,z);
 
   function path(points, fill, stroke, weight = 3, dash = []) {
     ctx.beginPath();
@@ -473,10 +776,14 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart) {
     });
   }
 
-  ctx.fillStyle = '#111919';
+  ctx.fillStyle = '#101c18';
   ctx.fillRect(0,0,w,h);
-  path(rect(-2,-2,104,68),'#173e2a');
-  for (let i=0;i<10;i++) path(rect(i*10,0,10,64),i%2 ? '#297247' : '#246941');
+  ctx.save();
+  ctx.translate(viewport.x,viewport.y);
+  ctx.scale(viewport.zoom,viewport.zoom);
+  if (perspective) path(rect(-3,0,106,68),'#0a1411');
+  path(rect(-2,-2,104,68),'#1c4933', '#39624e',2);
+  for (let i=0;i<10;i++) path(rect(i*10,0,10,64),i%2 ? '#307951' : '#286d48');
   const white = '#d6e7d8';
   path(rect(0,0,100,64),null,white);
   path([[50,0],[50,64]],null,white);
@@ -485,6 +792,16 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart) {
   for (const [x,smallX] of [[0,0],[84,94]]) {
     path(rect(x,13,16,38),null,white);
     path(rect(smallX,23,6,18),null,white);
+    const left = x === 0;
+    const spot = left ? 11 : 89;
+    path(ring(spot,32,.35),white);
+    const arc = Array.from({length:17},(_,i) => {
+      const theta = -.87+i*1.74/16;
+      return [spot+(left ? 1 : -1)*8*Math.cos(theta),32+8*Math.sin(theta)];
+    });
+    path(arc,null,white);
+    const goalX = left ? 0 : 100;
+    path([[goalX,28.4],[goalX+(left ? -2 : 2),28.4],[goalX+(left ? -2 : 2),35.6],[goalX,35.6]],'#d6e7d842',white,2);
   }
 
   objects.forEach(({type,x,y,end},index) => {
@@ -551,6 +868,9 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart) {
       const z = perspective && !ball ? 3 : 0;
       const color = ball ? '#fafafa' : type === 'player' ? '#f14967' : '#6bc6ff';
       if (z) prop([[0,0,0],[0,0,z]],null,'#172027',14);
+      if (!ball && entry.rotation != null) {
+        prop([[3,0,z],[1.35,-.9,z],[1.35,.9,z]],color,'#172027',2);
+      }
       const [px,py] = project(x,y,z);
       const radius = ball ? 11 : 17;
       const shading = ctx.createRadialGradient(px-radius*.3,py-radius*.35,1,px,py,radius);
@@ -570,4 +890,5 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart) {
     }
   }
   if (routeStart) path(ring(...routeStart,1),'#fff');
+  ctx.restore();
 }
