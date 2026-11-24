@@ -52,6 +52,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       <label>Archivio sedute<select data-sessions><option value="">Nuova seduta</option></select></label>
       <button data-action="new" type="button">Nuova seduta</button>
       <button data-action="save" type="button">Salva seduta</button>
+      <button data-action="pdf" type="button">Scarica PDF</button>
+      <button data-action="copy" type="button" disabled>Duplica seduta</button>
       <button data-action="delete" type="button" disabled>Elimina seduta</button>
     </div>
     <div class="vut-grid">
@@ -60,7 +62,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       <label>Categoria<input name="category" maxlength="80" list="vut-categories"></label>
       <datalist id="vut-categories">${categoryNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
     </div>
-    <h2>Esercizi</h2>
+    <h2>Esercizi <small data-total></small></h2>
     <div class="vut-row" data-exercises></div>
     <div class="vut-grid">
       <label>Nome esercizio<input name="exercise-title" maxlength="120" placeholder="Es. Circuito a stazioni"></label>
@@ -116,6 +118,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       new Option(`${row.training_date.split('-').reverse().join('/')} · ${row.title}`, row.id)));
     list.value = sessions.some(row => row.id === session.id) ? session.id : '';
     action('delete').disabled = busy || !list.value;
+    action('copy').disabled = busy || !list.value;
     list.disabled = busy;
   }
 
@@ -148,6 +151,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   }
 
   function updateExercises() {
+    const total = session.exercises.reduce((sum, entry) => sum + (Number(entry.minutes) || 0), 0);
+    find('[data-total]').textContent = '· ' + total + ' min totali';
     find('[data-exercises]').innerHTML = session.exercises.map((entry, position) =>
       `<button type="button" data-exercise="${position}" aria-pressed="${index === position}">${escapeHtml(entry.title || `Esercizio ${position + 1}`)} · ${Number(entry.minutes) || 0} min</button>`
     ).join('') + `<button type="button" data-action="add-exercise" ${session.exercises.length >= 30 ? 'disabled' : ''}>+ Esercizio</button>
@@ -280,6 +285,18 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     };
   }
 
+  function validSession() {
+    if (!session.title.trim() || !session.training_date) {
+      status.textContent = 'Inserisci titolo e data della seduta.';
+      return false;
+    }
+    if (session.exercises.some(entry => !Number.isInteger(entry.minutes) || entry.minutes < 1 || entry.minutes > 180)) {
+      status.textContent = 'Imposta una durata da 1 a 180 minuti per ogni esercizio.';
+      return false;
+    }
+    return true;
+  }
+
   host.onclick = event => {
     const button = event.target.closest('button');
     if (!button || busy) return;
@@ -298,15 +315,33 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
           status.textContent = '';
         }
         break;
+      case 'copy': {
+        const source = structuredClone(session);
+        const draft = newSession();
+        draft.title = source.title.slice(0, 113).trimEnd() + ' (copia)';
+        draft.category = source.category;
+        draft.exercises = source.exercises;
+        changeSession(draft);
+        markDirty();
+        status.textContent = 'Copia pronta. Salvala per aggiungerla all’archivio.';
+        break;
+      }
+      case 'pdf':
+        if (!validSession()) return;
+        void perform('Preparazione del PDF…', async () => {
+          const {downloadTrainingPdf} = await import('./allenamento-pdf.js');
+          const board = document.createElement('canvas');
+          board.width = 1200;
+          board.height = 800;
+          await downloadTrainingPdf(session, equipment, objects => {
+            drawField(board, objects, false, 0, -1, null);
+            return board.toDataURL('image/png');
+          });
+          status.textContent = 'PDF della seduta pronto.';
+        });
+        break;
       case 'save':
-        if (!session.title.trim() || !session.training_date) {
-          status.textContent = 'Inserisci titolo e data della seduta.';
-          return;
-        }
-        if (session.exercises.some(entry => !Number.isInteger(entry.minutes) || entry.minutes < 1 || entry.minutes > 180)) {
-          status.textContent = 'Imposta una durata da 1 a 180 minuti per ogni esercizio.';
-          return;
-        }
+        if (!validSession()) return;
         void perform('Salvataggio…', async () => {
           const {error} = await client.from(table).upsert({...session, title:session.title.trim(), updated_at:new Date().toISOString()}).select('id').single();
           if (error) throw error;
@@ -486,6 +521,16 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart) {
       prop(frame,null,'#293024',14);
       prop(frame,null,yellow,8);
       prop([[-1.72,barY,z],[1.72,barY,z]],null,'#f7ff9a',3);
+      if (!perspective) {
+        const [px,py] = project(x,y);
+        ctx.font = 'bold 17px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#14271c';
+        ctx.strokeText(String(entry.height || 15),px,py-13);
+        ctx.fillStyle = '#f7ff9a';
+        ctx.fillText(String(entry.height || 15),px,py-13);
+      }
     } else if (type === 'ladder') {
       for (const side of [-1.2,1.2]) prop([[side,-4,0],[side,4,0]],null,'#ffbc45',5);
       for (const rung of [-4,-2,0,2,4]) prop([[-1.2,rung,0],[1.2,rung,0]],null,'#ffdc80',5);
