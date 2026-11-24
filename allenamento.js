@@ -214,6 +214,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let viewport = {zoom:1,x:0,y:0};
   const pointers = new Map();
   let gesture = null;
+  let pointerEvents = null;
+  let frame = null;
+  let exporting = false;
+  let loadingArchive = true;
   const exercise = () => session.exercises[index];
 
   function markDirty(value = true) {
@@ -225,16 +229,17 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     list.replaceChildren(new Option('Nuova seduta', ''), ...sessions.map(row =>
       new Option(`${row.training_date.split('-').reverse().join('/')} · ${row.title}`, row.id)));
     list.value = sessions.some(row => row.id === session.id) ? session.id : '';
-    action('delete').disabled = busy || !list.value;
-    action('copy').disabled = busy || !list.value;
-    list.disabled = busy;
+    action('delete').disabled = busy || loadingArchive || !list.value;
+    action('copy').disabled = busy || loadingArchive || !list.value;
+    list.disabled = busy || loadingArchive;
   }
 
   async function readSessions() {
     const {data, error} = await client.from(table).select('id,title,training_date').order('training_date', {ascending:false}).order('updated_at', {ascending:false});
     if (error) throw error;
-    sessions = data;
-    updateArchive();
+    const entries = new Map(data.map(row => [row.id,row]));
+    for (const row of sessions) entries.set(row.id,row);
+    sessions = [...entries.values()].sort((a,b) => b.training_date.localeCompare(a.training_date));
   }
 
   function changeSession(value) {
@@ -249,7 +254,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     index = next;
     selected = -1;
     routeStart = null;
-    drag = null;
+    resetPointers();
     undo = [];
     fit();
     setTool('select');
@@ -285,11 +290,29 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     return ['hurdle','goal','ladder','player','opponent'].includes(entry.type) ? entry.rotation || 0 : null;
   }
 
+  function drawBoard() {
+    const objects = exercise().objects;
+    const entry = objects[selected];
+    let grip = null;
+    if (tool === 'select' && entry && !entry.end && selectionRotation(entry) !== null) {
+      grip = rotationGrip(entry);
+    }
+    drawField(canvas,objects,view3d,angle,selected,routeStart,viewport,screenUnits(1),grip);
+  }
+
+  function queueBoard() {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(() => {
+      frame = null;
+      if (canvas.isConnected) drawBoard();
+    });
+  }
+
   function paint() {
     const objects = exercise().objects;
     const entry = objects[selected];
     const rotation = selectionRotation(entry);
-    drawField(canvas, objects, view3d, angle, selected, routeStart, viewport, screenUnits(1));
+    queueBoard();
     canvas.dataset.mode = tool;
     action('remove-object').disabled = busy || !entry;
     action('rotate-object').disabled = action('object-left').disabled = busy || rotation === null;
@@ -305,8 +328,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
       : routeStart ? 'Tocca la destinazione della freccia.'
       : tool === 'select' && entry?.end ? 'Trascina i cerchi alle estremità per cambiare la lunghezza o il rombo centrale per curvare la freccia.'
+      : tool === 'select' && rotation !== null ? 'Trascina l’elemento per spostarlo o la maniglia ↻ per ruotarlo.'
       : tool === 'select' ? 'Tocca per selezionare un elemento o trascinalo per spostarlo.'
-      : 'Tocca il campo per aggiungere: ' + equipment[tool] + '.';
+      : tool === 'run' || tool === 'pass' ? 'Tocca il punto di partenza della freccia.'
+      : 'Tocca più punti sul campo per aggiungere: ' + equipment[tool] + '.';
   }
 
   function setTool(next) {
@@ -349,8 +374,33 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     return [px*viewport.zoom+viewport.x,py*viewport.zoom+viewport.y];
   };
 
+  function rotationGrip(entry) {
+    const center = at(entry.x,entry.y);
+    if (center[0] < 0 || center[0] > canvas.width || center[1] < 0 || center[1] > canvas.height) return null;
+    const radians = (entry.rotation || 0)*Math.PI/180;
+    const tip = at(entry.x+Math.cos(radians),entry.y+Math.sin(radians));
+    const dx = tip[0]-center[0];
+    const dy = tip[1]-center[1];
+    const length = Math.hypot(dx,dy) || 1;
+    const reach = screenUnits(34)/length;
+    const [gx,gy] = [center[0]+dx*reach,center[1]+dy*reach];
+    const margin = screenUnits(13);
+    return {center,point:[clamp(gx,margin,canvas.width-margin),clamp(gy,margin,canvas.height-margin)]};
+  }
+
+  function dragAngle(object,x,y) {
+    return Math.atan2(y-object.y,x-object.x)*180/Math.PI;
+  }
+
   function pickHandle(entry,point) {
-    if (!entry?.end) return null;
+    if (!entry) return null;
+    if (!entry.end) {
+      if (selectionRotation(entry) === null) return null;
+      const grip = rotationGrip(entry);
+      if (!grip) return null;
+      const [x,y] = grip.point;
+      return Math.hypot(point[0]-x,point[1]-y) <= screenUnits(16) ? 'rotation' : null;
+    }
     let best = screenUnits(17);
     let picked = null;
     for (const [handle,position] of Object.entries(routeHandles(entry))) {
@@ -406,8 +456,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       entry.height = Number(field('height').value);
     }
     snapshot();
-    selected = objects.push(entry)-1;
-    setTool('select');
+    const placed = objects.push(entry)-1;
+    if (entry.end) {
+      selected = placed;
+      setTool('select');
+    }
     markDirty();
     paint();
   }
@@ -417,11 +470,40 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     return {center:[(a[0]+b[0])/2,(a[1]+b[1])/2], distance:Math.max(1,Math.hypot(a[0]-b[0],a[1]-b[1]))};
   }
 
+  function resetPointers() {
+    const activePointers = [...pointers.keys()];
+    pointers.clear();
+    drag = null;
+    gesture = null;
+    pointerEvents?.abort();
+    pointerEvents = null;
+    for (const id of activePointers) {
+      if (canvas.hasPointerCapture?.(id)) {
+        try { canvas.releasePointerCapture(id); } catch { /* Il puntatore è già terminato. */ }
+      }
+    }
+  }
+
+  function watchPointers() {
+    pointerEvents = new AbortController();
+    const options = {signal:pointerEvents.signal};
+    window.addEventListener('pointerup',finishPointer,options);
+    window.addEventListener('pointercancel',cancelPointer,options);
+    window.addEventListener('blur',resetPointers,options);
+    window.addEventListener('pagehide',resetPointers,options);
+    document.addEventListener('visibilitychange',() => {
+      if (document.hidden) resetPointers();
+    },options);
+  }
+
   canvas.onpointerdown = event => {
-    if (busy || event.button !== 0 || pointers.size >= 2) return;
+    if (busy || event.button !== 0) return;
+    if (event.isPrimary && pointers.size) resetPointers();
+    if (pointers.size >= 2) return;
+    if (!pointers.size) watchPointers();
     const point = screenPoint(event);
     pointers.set(event.pointerId,point);
-    canvas.setPointerCapture(event.pointerId);
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* Restano attivi gli eventi di fine gesto. */ }
     if (pointers.size === 2) {
       const state = pinchState();
       gesture = {...state, zoom:viewport.zoom, anchor:viewPoint(state.center,viewport)};
@@ -448,7 +530,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (gesture) {
       const state = pinchState();
       viewport = cameraFor(clamp(gesture.zoom*state.distance/gesture.distance,1,4),state.center,gesture.anchor);
-      paint();
+      queueBoard();
       return;
     }
     if (drag?.id !== event.pointerId) return;
@@ -461,13 +543,18 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       const [x,y] = pitchPoint(point);
       if (!drag.moved) snapshot();
       const {original} = drag;
-      exercise().objects[selected] = drag.handle
-        ? editRoute(original,drag.handle,x-drag.x,y-drag.y)
-        : moveObject(original,x-drag.x,y-drag.y);
-      markDirty();
+      if (drag.handle === 'rotation') {
+        const rotation = Math.round((original.rotation || 0)+dragAngle(original,x,y)-dragAngle(original,drag.x,drag.y));
+        exercise().objects[selected] = orientObject(original,(rotation%360+360)%360);
+      } else {
+        exercise().objects[selected] = drag.handle
+          ? editRoute(original,drag.handle,x-drag.x,y-drag.y)
+          : moveObject(original,x-drag.x,y-drag.y);
+      }
+      if (!drag.moved) markDirty();
     }
     drag.moved = true;
-    paint();
+    queueBoard();
   };
 
   function endPointer(event, complete) {
@@ -475,13 +562,16 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     gesture = null;
     const active = drag;
     drag = null;
+    if (!pointers.size) resetPointers();
     if (complete && !busy && active?.id === event.pointerId && !active.moved && tool !== 'select' && tool !== 'pan') {
       place(screenPoint(event));
-    }
+    } else if (!pointers.size) paint();
   }
 
-  canvas.onpointerup = event => endPointer(event,true);
-  canvas.onpointercancel = canvas.onlostpointercapture = event => endPointer(event,false);
+  function finishPointer(event) { endPointer(event,true); }
+  function cancelPointer(event) { endPointer(event,false); }
+  canvas.onpointerup = finishPointer;
+  canvas.onpointercancel = canvas.onlostpointercapture = cancelPointer;
   canvas.addEventListener('wheel', event => {
     if (busy || (!event.ctrlKey && !event.metaKey && tool !== 'pan')) return;
     event.preventDefault();
@@ -517,8 +607,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   function setBusy(value) {
     busy = value;
+    if (value) resetPointers();
     for (const control of host.querySelectorAll('button,input,select,textarea')) control.disabled = value;
     if (!value) {
+      action('pdf').disabled = exporting;
       updateExercises();
       updateArchive();
       paint();
@@ -575,6 +667,31 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     return true;
   }
 
+  async function exportPdf() {
+    const copy = structuredClone(session);
+    exporting = true;
+    action('pdf').disabled = true;
+    const pending = 'Preparazione del PDF…';
+    status.textContent = pending;
+    try {
+      const {downloadTrainingPdf} = await import('./allenamento-pdf.js');
+      const board = document.createElement('canvas');
+      board.width = 1200;
+      board.height = 800;
+      await downloadTrainingPdf(copy,equipment,objects => {
+        drawField(board,objects,false,0,-1,null);
+        return board.toDataURL('image/png');
+      });
+      if (status.textContent === pending) status.textContent = 'PDF della seduta pronto.';
+    } catch (error) {
+      console.error(error);
+      if (status.textContent === pending) status.textContent = 'Esportazione PDF non riuscita. Riprova.';
+    } finally {
+      exporting = false;
+      action('pdf').disabled = busy;
+    }
+  }
+
   host.onclick = event => {
     const button = event.target.closest('button');
     if (!button || busy) return;
@@ -603,18 +720,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         break;
       }
       case 'pdf':
-        if (!validSession()) return;
-        void perform('Preparazione del PDF…', async () => {
-          const {downloadTrainingPdf} = await import('./allenamento-pdf.js');
-          const board = document.createElement('canvas');
-          board.width = 1200;
-          board.height = 800;
-          await downloadTrainingPdf(session, equipment, objects => {
-            drawField(board, objects, false, 0, -1, null);
-            return board.toDataURL('image/png');
-          });
-          status.textContent = 'PDF della seduta pronto.';
-        });
+        if (exporting || !validSession()) return;
+        void exportPdf();
         break;
       case 'save':
         if (!validSession()) return;
@@ -698,10 +805,15 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   };
 
   changeSession(session);
-  await perform('Caricamento archivio…', async () => {
+  try {
     await readSessions();
-    status.textContent = '';
-  });
+  } catch (error) {
+    console.error(error);
+    if (!status.textContent) status.textContent = 'Archivio sedute temporaneamente non disponibile.';
+  } finally {
+    loadingArchive = false;
+    if (host.isConnected) updateArchive();
+  }
 }
 
 const clamp = (value,min,max) => Math.min(max,Math.max(min,value));
@@ -797,7 +909,7 @@ function orientObject(object,rotation) {
   return {...object,x:nx,y:ny,end:absolute(offsets[1]),...(control ? {control:absolute(offsets[2])} : {})};
 }
 
-function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1) {
+function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null) {
   const ctx = canvas.getContext('2d');
   const {width:w,height:h} = canvas;
   const cos = Math.cos(angle);
@@ -979,4 +1091,23 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     }
   }
   ctx.restore();
+  if (grip) {
+    const [x,y] = grip.point;
+    ctx.beginPath();
+    ctx.moveTo(...grip.center);
+    ctx.lineTo(x,y);
+    ctx.lineWidth = 1.5*units;
+    ctx.strokeStyle = '#fff';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x,y,11*units,0,2*Math.PI);
+    ctx.fillStyle = '#172b22';
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold ' + 15*units + 'px system-ui, sans-serif';
+    ctx.fillText('↻',x,y);
+  }
 }

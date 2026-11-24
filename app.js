@@ -1,6 +1,6 @@
 import {SUPABASE_URL,SUPABASE_ANON_KEY} from './config.js';
 import {getCalendarFixtures,calendarPage,bindCalendarPage,bindCalendarEdits,weekendDashboard,isCalendarUser,resetCalendarHome} from './calendari.js';
-import {canUseTraining,mountTraining} from './allenamento.js?v=20261125-traiettorie-v4';
+import {canUseTraining,mountTraining} from './allenamento.js?v=20261125-campo-fluido-v5';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 const $=s=>document.querySelector(s), app=$('#app'), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const configured=SUPABASE_URL.startsWith('https://')&&SUPABASE_ANON_KEY!=='INSERISCI_ANON_KEY';
@@ -531,7 +531,7 @@ document.addEventListener('input',e=>{if(e.target.closest?.(vuEditableForms)&&!e
 document.addEventListener('change',e=>{if(e.target.closest?.(vuEditableForms)&&!e.target.closest('#loginform'))vuFormDirty=true},true);
 function vuPullAllowed(target){
  if(!me||vuRefreshing||window.scrollY>3||document.querySelector('.vu-detail-overlay'))return false;
- if(target?.closest?.('input,textarea,select,button,[contenteditable],.vu-account-menu'))return false;
+ if(target?.closest?.('input,textarea,select,button,[contenteditable],.vu-account-menu,.vut-board'))return false;
  if(vuFormDirty)return false;
  // Le convocazioni in fase di compilazione conservano le selezioni anche prima del salvataggio.
  if(page==='matches'&&(editing||draft||selected.length||vuPendingMatchId))return false;
