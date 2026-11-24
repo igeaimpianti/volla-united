@@ -289,7 +289,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const objects = exercise().objects;
     const entry = objects[selected];
     const rotation = selectionRotation(entry);
-    drawField(canvas, objects, view3d, angle, selected, routeStart, viewport);
+    drawField(canvas, objects, view3d, angle, selected, routeStart, viewport, screenUnits(1));
     canvas.dataset.mode = tool;
     action('remove-object').disabled = busy || !entry;
     action('rotate-object').disabled = action('object-left').disabled = busy || rotation === null;
@@ -304,6 +304,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     find('[data-selection]').textContent = entry ? equipment[entry.type] + ' selezionato' : 'Nessun elemento selezionato';
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
       : routeStart ? 'Tocca la destinazione della freccia.'
+      : tool === 'select' && entry?.end ? 'Trascina i cerchi alle estremità per cambiare la lunghezza o il rombo centrale per curvare la freccia.'
       : tool === 'select' ? 'Tocca per selezionare un elemento o trascinalo per spostarlo.'
       : 'Tocca il campo per aggiungere: ' + equipment[tool] + '.';
   }
@@ -342,18 +343,37 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     viewport = {zoom:1,x:0,y:0};
   }
 
+  const screenUnits = pixels => pixels*canvas.width/(canvas.getBoundingClientRect().width || canvas.width);
+  const at = (x,y,z) => {
+    const [px,py] = projectPoint(canvas,view3d,angle,x,y,z);
+    return [px*viewport.zoom+viewport.x,py*viewport.zoom+viewport.y];
+  };
+
+  function pickHandle(entry,point) {
+    if (!entry?.end) return null;
+    let best = screenUnits(17);
+    let picked = null;
+    for (const [handle,position] of Object.entries(routeHandles(entry))) {
+      const [x,y] = at(...position);
+      const distance = Math.hypot(point[0]-x,point[1]-y);
+      if (distance <= best) {
+        best = distance;
+        picked = handle;
+      }
+    }
+    return picked;
+  }
+
   function pickObject(point) {
-    const screenRadius = 21*canvas.width/canvas.getBoundingClientRect().width;
-    let best = screenRadius;
+    let best = screenUnits(21);
     let picked = -1;
     exercise().objects.forEach((entry,index) => {
-      const at = (x,y,z) => {
-        const [px,py] = projectPoint(canvas,view3d,angle,x,y,z);
-        return [px*viewport.zoom+viewport.x,py*viewport.zoom+viewport.y];
-      };
       const base = at(entry.x,entry.y);
       let distance = Math.hypot(point[0]-base[0],point[1]-base[1]);
-      if (entry.end) distance = segmentDistance(point,base,at(...entry.end));
+      if (entry.end) {
+        const points = routePoints(entry).map(p => at(...p));
+        distance = Math.min(...points.slice(1).map((p,i) => segmentDistance(point,points[i],p)));
+      }
       const z = {hurdle:(entry.height || 15)/10,goal:3,player:3,opponent:3,pole:6,cone:2.9}[entry.type];
       if (view3d && z) distance = segmentDistance(point,base,at(entry.x,entry.y,z));
       if (distance <= best) {
@@ -409,9 +429,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       return;
     }
     const [x,y] = pitchPoint(point);
-    if (tool === 'select') selected = pickObject(point);
+    let handle = null;
+    if (tool === 'select') {
+      handle = pickHandle(exercise().objects[selected],point);
+      if (!handle) selected = pickObject(point);
+    }
     drag = {
-      id:event.pointerId, point, x, y, moved:false, viewport,
+      id:event.pointerId, point, x, y, moved:false, viewport, handle,
       original:tool === 'select' && selected >= 0 ? structuredClone(exercise().objects[selected]) : null
     };
     paint();
@@ -437,7 +461,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       const [x,y] = pitchPoint(point);
       if (!drag.moved) snapshot();
       const {original} = drag;
-      exercise().objects[selected] = moveObject(original,x-drag.x,y-drag.y);
+      exercise().objects[selected] = drag.handle
+        ? editRoute(original,drag.handle,x-drag.x,y-drag.y)
+        : moveObject(original,x-drag.x,y-drag.y);
       markDirty();
     }
     drag.moved = true;
@@ -710,32 +736,68 @@ function segmentDistance([x,y],[ax,ay],[bx,by]) {
   return Math.hypot(x-ax-fraction*dx,y-ay-fraction*dy);
 }
 
+function routeHandles({x,y,end,control}) {
+  const middle = [(x+end[0])/2,(y+end[1])/2];
+  return {start:[x,y], bend:control ? [(middle[0]+control[0])/2,(middle[1]+control[1])/2] : middle, end};
+}
+
+function routePoints({x,y,end,control}) {
+  if (!control) return [[x,y],end];
+  return Array.from({length:25},(_,i) => {
+    const t = i/24;
+    const a = (1-t)**2;
+    const b = 2*t*(1-t);
+    const c = t**2;
+    return [a*x+b*control[0]+c*end[0],a*y+b*control[1]+c*end[1]];
+  });
+}
+
+const limitPoint = ([x,y]) => [clamp(x,0,100),clamp(y,0,64)];
+
+function editRoute(object,handle,dx,dy) {
+  const {x,y,end,control} = object;
+  const handles = routeHandles(object);
+  const [hx,hy] = handles[handle];
+  if (handle === 'bend') {
+    return {...object,control:limitPoint([2*(hx+dx)-(x+end[0])/2,2*(hy+dy)-(y+end[1])/2])};
+  }
+  const next = limitPoint([hx+dx,hy+dy]);
+  const other = handle === 'start' ? end : [x,y];
+  if (Math.hypot(next[0]-other[0],next[1]-other[1]) < 1) return object;
+  const updated = handle === 'start' ? {...object,x:next[0],y:next[1]} : {...object,end:next};
+  if (control) updated.control = limitPoint([control[0]+(next[0]-hx)/2,control[1]+(next[1]-hy)/2]);
+  return updated;
+}
+
 function moveObject(object,dx,dy) {
-  const {x,y,end} = object;
-  const [ex,ey] = end || [x,y];
-  dx = clamp(dx,-Math.min(x,ex),100-Math.max(x,ex));
-  dy = clamp(dy,-Math.min(y,ey),64-Math.max(y,ey));
+  const {x,y,end,control} = object;
+  const points = [[x,y], ...(end ? [end] : []), ...(control ? [control] : [])];
+  dx = clamp(dx,-Math.min(...points.map(p=>p[0])),100-Math.max(...points.map(p=>p[0])));
+  dy = clamp(dy,-Math.min(...points.map(p=>p[1])),64-Math.max(...points.map(p=>p[1])));
   const moved = {...object,x:x+dx,y:y+dy};
-  if (end) moved.end = [ex+dx,ey+dy];
+  if (end) moved.end = [end[0]+dx,end[1]+dy];
+  if (control) moved.control = [control[0]+dx,control[1]+dy];
   return moved;
 }
 
 function orientObject(object,rotation) {
   if (!object.end) return {...object,rotation};
-  const {x,y,end} = object;
-  const length = Math.hypot(end[0]-x,end[1]-y);
-  const radians = rotation*Math.PI/180;
-  const dx = Math.cos(radians)*length;
-  const dy = Math.sin(radians)*length;
-  const maxX = Math.abs(dx) > 1e-9 ? 100/Math.abs(dx) : Infinity;
-  const maxY = Math.abs(dy) > 1e-9 ? 64/Math.abs(dy) : Infinity;
-  const scale = Math.min(1,maxX,maxY);
-  const nx = clamp(x,Math.max(0,-dx*scale),Math.min(100,100-dx*scale));
-  const ny = clamp(y,Math.max(0,-dy*scale),Math.min(64,64-dy*scale));
-  return {...object,x:nx,y:ny,end:[clamp(nx+dx*scale,0,100),clamp(ny+dy*scale,0,64)]};
+  const {x,y,end,control} = object;
+  const radians = rotation*Math.PI/180-Math.atan2(end[1]-y,end[0]-x);
+  const turn = ([px,py]) => [(px-x)*Math.cos(radians)-(py-y)*Math.sin(radians),(px-x)*Math.sin(radians)+(py-y)*Math.cos(radians)];
+  const offsets = [[0,0],turn(end),...(control ? [turn(control)] : [])];
+  const minX = Math.min(...offsets.map(p=>p[0]));
+  const maxX = Math.max(...offsets.map(p=>p[0]));
+  const minY = Math.min(...offsets.map(p=>p[1]));
+  const maxY = Math.max(...offsets.map(p=>p[1]));
+  const scale = Math.min(1,100/(maxX-minX || 1),64/(maxY-minY || 1));
+  const nx = clamp(x,-minX*scale,100-maxX*scale);
+  const ny = clamp(y,-minY*scale,64-maxY*scale);
+  const absolute = ([dx,dy]) => limitPoint([nx+dx*scale,ny+dy*scale]);
+  return {...object,x:nx,y:ny,end:absolute(offsets[1]),...(control ? {control:absolute(offsets[2])} : {})};
 }
 
-function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}) {
+function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1) {
   const ctx = canvas.getContext('2d');
   const {width:w,height:h} = canvas;
   const cos = Math.cos(angle);
@@ -804,15 +866,19 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     path([[goalX,28.4],[goalX+(left ? -2 : 2),28.4],[goalX+(left ? -2 : 2),35.6],[goalX,35.6]],'#d6e7d842',white,2);
   }
 
-  objects.forEach(({type,x,y,end},index) => {
+  objects.forEach((entry,index) => {
+    const {type,end} = entry;
     if (!end) return;
-    const dx = end[0]-x;
-    const dy = end[1]-y;
-    const heading = Math.atan2(dy,dx);
-    const color = index === selected ? '#fff' : type === 'run' ? '#ffdb6b' : '#6be1ff';
-    path([[x,y],end],null,color,6,type === 'pass' ? [14,11] : []);
-    path([end,[end[0]-2.9*Math.cos(heading-.46),end[1]-2.9*Math.sin(heading-.46)],
-      [end[0]-2.9*Math.cos(heading+.46),end[1]-2.9*Math.sin(heading+.46)]],color);
+    const points = routePoints(entry);
+    const previous = points.at(-2);
+    const heading = Math.atan2(end[1]-previous[1],end[0]-previous[0]);
+    const color = type === 'run' ? '#ffdb6b' : '#6be1ff';
+    const size = Math.min(2.9,Math.hypot(end[0]-entry.x,end[1]-entry.y)*.65);
+    const dash = type === 'pass' ? [14,11] : [];
+    if (index === selected) path(points,null,'#10231b',11,dash);
+    path(points,null,color,6,dash);
+    path([end,[end[0]-size*Math.cos(heading-.46),end[1]-size*Math.sin(heading-.46)],
+      [end[0]-size*Math.cos(heading+.46),end[1]-size*Math.sin(heading+.46)]],color);
   });
 
   const props = objects.map((entry,index) => ({entry,index})).filter(({entry}) => !entry.end);
@@ -890,5 +956,27 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     }
   }
   if (routeStart) path(ring(...routeStart,1),'#fff');
+  const activeRoute = objects[selected];
+  if (activeRoute?.end) {
+    for (const [name,point] of Object.entries(routeHandles(activeRoute))) {
+      const [x,y] = project(...point);
+      const radius = (name === 'bend' ? 6 : 5.5)*units/viewport.zoom;
+      ctx.beginPath();
+      if (name === 'bend') {
+        ctx.moveTo(x,y-radius);
+        ctx.lineTo(x+radius,y);
+        ctx.lineTo(x,y+radius);
+        ctx.lineTo(x-radius,y);
+        ctx.closePath();
+      } else {
+        ctx.arc(x,y,radius,0,2*Math.PI);
+      }
+      ctx.fillStyle = name === 'bend' ? '#ffdb6b' : '#fff';
+      ctx.strokeStyle = '#172b22';
+      ctx.lineWidth = 1.5*units/viewport.zoom;
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
   ctx.restore();
 }
