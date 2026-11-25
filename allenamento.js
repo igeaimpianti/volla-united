@@ -2,7 +2,7 @@ const table = 'vu_training_sessions';
 const equipment = {
   player: 'Giocatore', opponent: 'Avversario', ball: 'Pallone',
   disc: 'Cinesino', cone: 'Cono', hurdle: 'Ostacolo', ladder: 'Scaletta',
-  goal: 'Porticina', pole: 'Paletto', run: 'Corsa', pass: 'Passaggio', zone: 'Area'
+  goal: 'Porticina', pole: 'Paletto', run: 'Corsa', pass: 'Passaggio', dribble: 'Guida palla', shot: 'Tiro', zone: 'Area'
 };
 const discColors = {
   pink:['Rosa','#ff50a2'], red:['Rosso','#ff394f'], blue:['Blu','#449aff'],
@@ -15,9 +15,6 @@ const isDisc = object => object?.type === 'disc';
 const isZone = object => object?.type === 'zone';
 const isGoalMarker = object => ['goal','cone','disc','pole'].includes(object?.type);
 const progressionNames = ['Tiro iniziale','1 contro 1','2 contro 1','2 contro 2'];
-const defaultProgressionText = 'Tiro: porta 1. 1 contro 1: porta 2. 2 contro 1: porta 3. 2 contro 2: porta 4.';
-const progressionDoorOptions = Array.from({length:4},(_,index) =>
-  `<option value="${index}">Porta ${index+1}</option>`).join('');
 const colorKey = (palette,key,fallback) => Object.hasOwn(palette,key) ? key : fallback;
 const colorOptions = palette => Object.entries(palette).map(([key,[label]]) =>
   `<option value="${key}">${label}</option>`).join('');
@@ -66,6 +63,7 @@ const icons = {
   hurdle:'M4 20V7h16v13M2 20h5m10 0h5', ladder:'M7 3v18M17 3v18M7 5h10M7 10h10M7 15h10M7 20h10',
   goal:'M3 19V6h18v13M3 9h18M7 9v10m5-10v10m5-10v10M3 14h18',
   pole:'M12 3v17M6 21h12', run:'M3 18 17 6m-7 0h7v7', pass:'M4 18l2-2m3-3 2-2m3-3 3-3m-7 0h7v7',
+  dribble:'M3 19c10 0 1-14 13-14m-4-3h5v5M19 18a3 3 0 1 0 0 .1', shot:'M3 18 19 4m-7 0h7v7M3 10l4-3M9 21l4-3',
   left:'M4 5v6h6M4 11a8 8 0 1 1 3 7', right:'M20 5v6h-6m6 0a8 8 0 1 0-3 7',
   minus:'M5 12h14', fit:'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5',
   cube:'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
@@ -139,16 +137,6 @@ const styles = `
 .vut-palette [data-tool=cone] svg,.vut-palette [data-tool=pole] svg {color:#ffb46b}
 .vut-inspector {border-top:1px solid var(--line)}
 .vut-inspector strong {font-size:13px}
-.vut [data-progression] {display:block}
-.vut [data-progression] summary {cursor:pointer;font-weight:700}
-.vut [data-progression][open] summary {margin-bottom:10px}
-.vut [data-progression] label {margin:8px 0;flex-wrap:wrap}
-.vut [data-progression] small {display:block;margin:6px 0}
-.vut [data-progression] textarea {width:100%}
-.vut-progression-goals {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:8px;margin:10px 0}
-.vut-progression-goals fieldset {min-width:0;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
-.vut-progression-goals legend {font-size:13px;font-weight:700;padding:0 4px}
-.vut canvas[data-mode=progression] {cursor:crosshair}
 .vut-inspector label {display:flex;align-items:center;gap:5px}
 .vut-inspector select {width:auto}
 .vut-inspector input[type=number] {width:78px}
@@ -230,30 +218,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <small data-preview-mode></small>
         <small data-video-status role="status" aria-live="polite"></small>
       </div>
-      <details class="vut-inspector" data-progression>
-        <summary>Animazione automatica · Tiro fino al 2 contro 2</summary>
-        <div class="vut-controls">
-          <button type="button" data-action="map-progression">Indica giocatori e porte sul campo</button>
-          <button type="button" data-action="cancel-mapping" hidden>Annulla selezione</button>
-          <button type="button" data-action="disable-progression" hidden>Disattiva animazione automatica</button>
-        </div>
-        <div class="vut-progression-goals" data-progression-goals hidden>
-          ${progressionNames.map((name,i) => `<fieldset>
-            <legend data-progression-player="${i}">Giocatore ${i+1} · ${name}</legend>
-            <label>Porta da attaccare <select name="progression-goal-${i}">${progressionDoorOptions}</select></label>
-            <label>Seconda porta <select name="progression-alt-${i}"><option value="">Nessuna</option>${progressionDoorOptions}</select></label>
-          </fieldset>`).join('')}
-        </div>
-        <label>Descrivi in quali porte si conclude ogni fase
-          <textarea name="progression-text" rows="2" maxlength="400" aria-describedby="vut-progression-example"></textarea>
-        </label>
-        <small id="vut-progression-example">Es. ${defaultProgressionText} Per dare una scelta, scrivi «porta 1 o porta 2» nella stessa fase.</small>
-        <label>Il giocatore 3 si abbina al
-          <select name="progression-team"><option value="2">Giocatore 2</option><option value="1">Giocatore 1</option></select>
-        </label>
-        <button type="button" data-action="generate-progression">Genera e guarda</button>
-        <small data-progression-status role="status" aria-live="polite"></small>
-      </details>
       <div class="vut-palette" aria-label="Attrezzi e percorsi">
         <button data-tool="select" type="button" aria-pressed="true">${icon('select')} Seleziona</button>
         ${Object.entries(equipment).map(([type,label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${icon(type)} ${type === 'zone' ? 'Delimita area' : label}</button>`).join('')}
@@ -274,7 +238,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-run-speed hidden>Velocità corsa <select name="run-speed">
           ${Array.from(runSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
-        <label data-pass-speed hidden>Velocità passaggio <select name="pass-speed">
+        <label data-pass-speed hidden><span data-ball-speed-label>Velocità passaggio</span> <select name="pass-speed">
           ${Array.from(passSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
         <label data-pressure-speed hidden>Pressione verso la palla <select name="pressure-speed">
@@ -338,7 +302,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let exporting = false;
   let loadingArchive = true;
   let playback = null;
-  let progressionMapping = null;
   const bibPreferences = {player:'red',opponent:'blue'};
   const exercise = () => session.exercises[index];
 
@@ -385,8 +348,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     field('exercise-title').value = exercise().title;
     field('minutes').value = exercise().minutes;
     field('notes').value = exercise().notes;
-    progressionMapping = null;
-    syncProgressionFields();
     updateExercises();
     paint();
   }
@@ -424,10 +385,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (tool === 'select' && entry && !entry.end && selectionRotation(entry) !== null) {
       grip = rotationGrip(entry);
     }
-    const progression = exercise().progression;
     const boardObjects = playback?.plan.phases ? objects.filter(object => !object.end) : objects;
     drawField(canvas,boardObjects,view3d,angle,selected,routeStart,viewport,screenUnits(1),grip,playback?.hiddenObjects,zoneCorners,showZones.checked,alignment);
-    if (!playback && find('[data-progression]').open) drawProgressionMarkers(progressionMapping || progression);
   }
 
   function queueBoard() {
@@ -451,7 +410,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const hasCircuit = objects.filter(isCircuitEquipment).length >= 2;
     find('[data-preview-controls]').hidden = !(hasPass || hasRun || hasCircuit);
     find('[data-preview-mode]').textContent = [
-      hasPass && 'Passaggi in ordine numerico',
+      hasPass && 'Azioni con palla in ordine numerico',
       hasPass && objects.some(isPressing) && 'Pressione verso la palla',
       hasRun ? 'Corse lungo le frecce' : hasCircuit && 'Percorso tra gli attrezzi'
     ].filter(Boolean).join(' · ');
@@ -548,114 +507,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     }
   }
 
-  const progressionStatus = message => { find('[data-progression-status]').textContent = message; };
-
-  function syncProgressionFields() {
-    const progression = exercise().progression;
-    field('progression-text').value = progression?.text ?? defaultProgressionText;
-    syncGoalSelectors(progressionGoalOrder(field('progression-text').value) ?? progressionGoalOrder(defaultProgressionText));
-    field('progression-team').value = String(progression?.team ?? 2);
-    progressionStatus(progression && progressionLayout(exercise().objects,progression)
-      ? 'Giocatori e porte associati.' : '');
-  }
-
-  function syncGoalSelectors(order) {
-    if (!order) return;
-    order.forEach(([first,second],index) => {
-      field(`progression-goal-${index}`).value = String(first);
-      field(`progression-alt-${index}`).value = second == null ? '' : String(second);
-    });
-  }
-
-  field('progression-text').oninput = () => {
-    syncGoalSelectors(progressionGoalOrder(field('progression-text').value));
-  };
-
-  find('[data-progression-goals]').onchange = () => {
-    const order = progressionNames.map((_,i) => {
-      const first = field(`progression-goal-${i}`).value;
-      const alternative = field(`progression-alt-${i}`);
-      if (alternative.value === first) alternative.value = '';
-      return alternative.value === '' ? [Number(first)] : [Number(first),Number(alternative.value)];
-    });
-    field('progression-text').value = progressionNames.map((name,i) =>
-      `${name}: ${order[i].map(goal => `porta ${goal+1}`).join(' o ')}.`).join(' ');
-  };
-
-  function mappingHint() {
-    const {players,goals,post} = progressionMapping;
-    return players.length < 4 ? `Tocca il giocatore ${players.length+1} nell’ordine di ingresso.`
-      : `Porta ${goals.length+1}: ${post ? 'tocca il secondo palo.' : 'tocca una porticina o il primo cono, cinesino o paletto.'}`;
-  }
-
-  function mapProgressionPoint(point) {
-    const mapping = progressionMapping;
-    if (!mapping) return;
-    const choosePlayer = mapping.players.length < 4;
-    const reserved = choosePlayer ? mapping.players : [...mapping.goals.flat(),mapping.post];
-    const index = pickObject(point, choosePlayer ? isPlayer : isGoalMarker);
-    if (index < 0) return;
-    const entry = exercise().objects[index];
-    if (reserved.includes(entry)) return;
-    if (choosePlayer) mapping.players.push(entry);
-    else if (entry.type === 'goal' && !mapping.post) mapping.goals.push([entry]);
-    else if (entry.type !== 'goal' && !mapping.post) mapping.post = entry;
-    else if (entry.type !== 'goal' && Math.hypot(entry.x-mapping.post.x,entry.y-mapping.post.y) >= 1) {
-      mapping.goals.push([mapping.post,entry]);
-      mapping.post = null;
-    }
-    if (mapping.goals.length === 4) {
-      snapshot();
-      const identify = object => object.id ??= crypto.randomUUID();
-      exercise().progression = {
-        players:mapping.players.map(identify),goals:mapping.goals.map(pair => pair.map(identify)),
-        active:false,team:Number(field('progression-team').value),text:field('progression-text').value
-      };
-      clearVideo();
-      setTool('select');
-      markDirty();
-      progressionStatus('Giocatori e porte associati. Ora puoi generare l’animazione.');
-    } else progressionStatus(mappingHint());
-    paint();
-  }
-
-  function drawProgressionMarkers(mapping) {
-    if (!mapping) return;
-    const objects = exercise().objects;
-    const get = ref => typeof ref === 'string' ? objects.find(object => object.id === ref) : ref;
-    const context = canvas.getContext('2d');
-    const unit = screenUnits(1);
-    const label = (x,y,text) => {
-      const [px,py] = at(x,y);
-      context.strokeText(text,px,py-18*unit);
-      context.fillText(text,px,py-18*unit);
-    };
-    context.save();
-    context.font = `bold ${13*unit}px system-ui, sans-serif`;
-    context.textAlign = 'center';
-    context.lineWidth = 4*unit;
-    context.strokeStyle = '#102218';
-    context.fillStyle = '#fff';
-    mapping.players.map(get).forEach((player,index) => {
-      if (player) label(player.x,player.y,`G${index+1}`);
-    });
-    mapping.goals.forEach((refs,index) => {
-      const posts = refs.map(get);
-      if (!posts.every(Boolean)) return;
-      const [a,b = a] = posts;
-      label((a.x+b.x)/2,(a.y+b.y)/2,`Porta ${index+1}`);
-    });
-    if (mapping.post) label(mapping.post.x,mapping.post.y,'1° palo');
-    context.restore();
-  }
-
   function exercisePlan() {
     const {objects,progression} = exercise();
     const layout = progression?.active && progressionLayout(objects,progression);
     return layout ? buildProgression(objects,layout,progression) : previewPlan(objects);
   }
-
-  find('[data-progression]').addEventListener('toggle',queueBoard);
 
   function clearVideo() {
     if (!videoDownload.hidden) URL.revokeObjectURL(videoDownload.href);
@@ -732,16 +588,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const rotation = selectionRotation(entry);
     queueBoard();
     updatePreview();
-    const progression = exercise().progression;
-    action('cancel-mapping').hidden = !progressionMapping;
-    action('disable-progression').hidden = !progression?.active;
-    const layout = progressionLayout(objects,progression);
-    find('[data-progression-goals]').hidden = !layout || Boolean(progressionMapping);
-    action('generate-progression').disabled = busy || Boolean(progressionMapping) || !layout;
-    layout?.players.forEach((player,i) => {
-      const bib = bibs[playerBib(player)][0];
-      find(`[data-progression-player="${i}"]`).textContent = `G${i+1} · ${bib} · ${progressionNames[i]}`;
-    });
     canvas.dataset.mode = tool;
     action('remove-object').disabled = busy || !entry;
     action('rotate-object').disabled = action('object-left').disabled = busy || rotation === null;
@@ -767,12 +613,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     find('[data-run-speed]').hidden = !isRun(entry);
     field('run-speed').value = String(arrowSpeed(entry,runSpeeds));
     find('[data-pass-speed]').hidden = !isPass(entry);
+    find('[data-ball-speed-label]').textContent = entry?.type === 'dribble' ? 'Velocità guida palla' : entry?.type === 'shot' ? 'Velocità tiro' : 'Velocità passaggio';
     field('pass-speed').value = String(arrowSpeed(entry,passSpeeds));
     find('[data-run-start]').hidden = !isRun(entry);
     if (entry && isRun(entry)) {
       const passCount = objects.filter(isPass).length;
       runStart.replaceChildren(new Option('Subito', '0'), ...Array.from({length:passCount},(_,index) =>
-        new Option(`Dopo il passaggio ${index+1}`, String(index+1))));
+        new Option(`Dopo l’azione ${index+1}`, String(index+1))));
       runStart.value = String(runStartPass(entry,passCount));
       runStart.disabled = busy || !passCount;
     }
@@ -781,12 +628,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (entry?.type === 'hurdle') height.value = entry.height || 15;
     find('[data-rotation]').hidden = rotation === null;
     if (document.activeElement !== field('rotation')) field('rotation').value = rotation ?? '';
-    const passNumber = entry?.type === 'pass' ? objects.slice(0,selected+1).filter(isPass).length : null;
+    const passNumber = isPass(entry) ? objects.slice(0,selected+1).filter(isPass).length : null;
     find('[data-selection]').textContent = entry
       ? equipment[entry.type] + (passNumber ? ' ' + passNumber : '') + ' selezionato'
       : 'Nessun elemento selezionato';
-    find('[data-hint]').textContent = tool === 'progression' && progressionMapping ? mappingHint()
-      : tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
+    find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
       : tool === 'zone' ? (zoneShape.value === 'free'
         ? `Tocca quattro cinesini sul campo. ${zoneCorners.length}/4 selezionati.`
         : `Tocca due cinesini allineati in orizzontale o in verticale. ${zoneCorners.length}/2 selezionati.`)
@@ -796,12 +642,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       : tool === 'select' && entry?.end ? 'Trascina i cerchi alle estremità per cambiare la lunghezza o il rombo centrale per curvare la freccia.'
       : tool === 'select' && rotation !== null ? 'Trascina l’elemento per spostarlo o la maniglia ↻ per ruotarlo.'
       : tool === 'select' ? 'Tocca per selezionare un elemento o trascinalo per spostarlo.'
-      : tool === 'run' || tool === 'pass' ? 'Tocca il punto di partenza della freccia.'
+      : tool === 'run' || isBallAction({type:tool}) ? 'Tocca il punto di partenza della freccia.'
       : 'Tocca più punti sul campo per aggiungere: ' + equipment[tool] + '.';
   }
 
   function setTool(next) {
-    if (next !== 'progression') progressionMapping = null;
     tool = next;
     zoneCorners.length = 0;
     alignment = null;
@@ -952,7 +797,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   }
 
   function place(point) {
-    if (tool === 'progression') return mapProgressionPoint(point);
     const [x,y] = pitchPoint(point);
     if (x < 0 || x > 100 || y < 0 || y > 64) return;
     const objects = exercise().objects;
@@ -966,7 +810,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       [entry.x,entry.y] = alignDisc([x,y]).point;
       entry.color = discColor;
     }
-    if (tool === 'run' || tool === 'pass') {
+    if (tool === 'run' || isBallAction({type:tool})) {
       if (!routeStart) {
         routeStart = [x,y];
         paint();
@@ -983,6 +827,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     }
     snapshot();
     const placed = objects.push(entry)-1;
+    if (entry.end && exercise().progression?.active) exercise().progression.active = false;
     if (entry.end) {
       selected = placed;
       setTool('select');
@@ -1376,44 +1221,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.closest('.vut-menu')) button.closest('details').open = false;
     if (['remove-object','rotate-object','object-left','undo'].includes(button.dataset.action)) stopPreview();
     switch (button.dataset.action) {
-      case 'map-progression':
-        stopPreview();
-        setTool('progression');
-        progressionMapping = {players:[],goals:[],post:null};
-        progressionStatus(mappingHint());
-        paint();
-        canvas.scrollIntoView({block:'center'});
-        break;
-      case 'cancel-mapping':
-        setTool('select');
-        progressionStatus('');
-        paint();
-        break;
-      case 'disable-progression':
-        stopPreview();
-        clearVideo();
-        snapshot();
-        exercise().progression.active = false;
-        markDirty();
-        paint();
-        break;
-      case 'generate-progression': {
-        const order = progressionGoalOrder(field('progression-text').value);
-        if (!order) {
-          progressionStatus('Indica una porta o due alternative da 1 a 4 per ciascuna fase. Usa l’esempio come modello.');
-          return;
-        }
-        stopPreview();
-        clearVideo();
-        snapshot();
-        Object.assign(exercise().progression,{order,team:Number(field('progression-team').value),active:true,text:field('progression-text').value});
-        markDirty();
-        progressionStatus('Animazione pronta.');
-        paint();
-        canvas.scrollIntoView({block:'center'});
-        startPreview();
-        break;
-      }
       case 'video-arrows':
       case 'video-clean':
         if (!exporting) void exportAnimation(button.dataset.action === 'video-arrows');
@@ -1523,7 +1330,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         if (!undo.length) return;
         Object.assign(exercise(),undo.pop());
         setTool('select');
-        syncProgressionFields();
         zoneCorners.length = 0;
         selected = -1;
         routeStart = null;
@@ -1617,7 +1423,8 @@ function recordTrainingVideo(recorder,duration,draw) {
   });
 }
 
-const isPass = object => object?.type === 'pass' && Boolean(object.end);
+const isBallAction = object => ['pass','dribble','shot'].includes(object?.type);
+const isPass = object => isBallAction(object) && Boolean(object.end);
 const isRun = object => object?.type === 'run' && Boolean(object.end);
 
 function routeHandles({x,y,end,control}) {
@@ -1767,13 +1574,6 @@ function assignRunPlayers(runs,players) {
     assignedPlayers.add(player);
   }
   return assignments;
-}
-
-function progressionGoalOrder(text) {
-  const matches = [...text.matchAll(/\bporta\s*(\d+)\b(?:\s+(?:o|oppure)\s+(?:porta\s*)?(\d+)\b)?/gi)];
-  const goals = matches.map(([,first,second]) =>
-    [...new Set(second ? [Number(first)-1,Number(second)-1] : [Number(first)-1])]);
-  return goals.length === 4 && goals.flat().every(goal => goal >= 0 && goal < 4) ? goals : null;
 }
 
 function progressionLayout(objects,progression) {
@@ -1963,7 +1763,7 @@ function previewPlan(objects) {
   const passArrows = objects.filter(isPass);
   const assignments = assignRunPlayers(runs,available);
 
-  for (const arrow of runs.length ? runs : [null]) {
+  for (const arrow of runs.length || passArrows.some(arrow => arrow.type === "dribble") ? runs : [null]) {
     const route = previewRoute(equipment,arrow);
     if (!route) continue;
     const [x,y] = route.segments[0].a;
@@ -2011,7 +1811,7 @@ function previewPlan(objects) {
     const points = routePoints(arrow);
     const previous = passes.at(-1);
     const start = previous ? previous.end+220 : 0;
-    const match = runs.length ? findReceipt(runners,arrow.end,index+1) : null;
+    const match = runs.length && arrow.type === 'pass' ? findReceipt(runners,arrow.end,index+1) : null;
     const snappedRoute = match && routeFromPoints([...points.slice(0,-1),match.point]);
     const receipt = snappedRoute ? match : null;
     const route = snappedRoute || routeFromPoints(points);
@@ -2021,7 +1821,8 @@ function previewPlan(objects) {
       return;
     }
 
-    const duration = clamp(route.length*38,350,2800)/arrowSpeed(arrow,passSpeeds);
+    const rate = arrow.type === 'dribble' ? 120 : arrow.type === 'shot' ? 26 : 38;
+    const duration = clamp(route.length*rate,350,arrow.type === 'dribble' ? 18000 : 2800)/arrowSpeed(arrow,passSpeeds);
     let passStart = start;
     if (receipt) {
       const {step,progress} = receipt;
@@ -2032,9 +1833,33 @@ function previewPlan(objects) {
       step.receipts.push({progress,time:passStart+duration});
     }
     addStep(passes,route,duration,passStart);
+    if (arrow.type === 'dribble') passes.at(-1).kind = 'conduzione';
     arrivalTimes.push(passStart+duration);
     scheduleRuns();
   });
+
+  for (const step of passes.filter(step => step.kind === 'conduzione')) {
+    const [x,y] = step.route.segments[0].a;
+    const near = point => Math.hypot(point[0]-x,point[1]-y);
+    const registered = runners.filter(runner => runner.steps.every(run =>
+      run.end <= step.start || run.start >= step.end));
+    const candidates = registered.flatMap(runner => {
+      const previous = runner.steps.findLast(run => run.end <= step.start);
+      const point = previous ? previous.route.segments.at(-1).b
+        : runner.player && [runner.player.x,runner.player.y];
+      return point ? [{runner,distance:near(point)}] : [];
+    });
+    for (const player of available.filter(player => !hiddenObjects.has(player))) {
+      candidates.push({player,distance:near([player.x,player.y])});
+    }
+    const best = candidates.filter(candidate => candidate.distance <= 7)
+      .sort((a,b) => a.distance-b.distance)[0];
+    const runner = best?.runner ?? {player:best?.player,bib:best?.player ? playerBib(best.player) : 'none',steps:[]};
+    if (!best?.runner) runners.push(runner);
+    if (runner.player) hiddenObjects.add(runner.player);
+    runner.steps.push({...step,receipts:[]});
+    runner.steps.sort((a,b) => a.start-b.start);
+  }
 
   if (passes.length) {
     const [x,y] = passes[0].route.segments[0].a;
@@ -2417,7 +2242,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     const points = routePoints(entry);
     const previous = points.at(-2);
     const heading = Math.atan2(end[1]-previous[1],end[0]-previous[0]);
-    const color = type === 'run' ? '#ffdb6b' : '#6be1ff';
+    const color = {run:'#ffdb6b',dribble:'#9ef287',shot:'#fff'}[type] ?? '#6be1ff';
     const size = Math.min(2.9,Math.hypot(end[0]-entry.x,end[1]-entry.y)*.65);
     const dash = type === 'pass' ? [14,11] : [];
     if (index === selected) path(points,null,'#10231b',11,dash);
