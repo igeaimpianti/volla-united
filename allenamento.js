@@ -49,6 +49,7 @@ const icons = {
   minus:'M5 12h14', fit:'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5',
   cube:'M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
   clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 4v5l3 2',
+  video:'M3 6h13v12H3zM16 10l5-3v10l-5-3z',
   play:'M8 4l12 8-12 8z', stop:'M6 6h12v12H6z',
   more:'M5 12h.01m6.99 0h.01m6.99 0h.01'
 };
@@ -103,6 +104,7 @@ const styles = `
 .vut-board {background:#10201a;border-block:1px solid #37463f;overflow:hidden;position:relative}
 .vut canvas {display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
 .vut canvas[data-preview] {position:absolute;inset:0;pointer-events:none}
+.vut [data-video-download] {color:#b4f5c7;padding:8px}
 .vut [data-action=preview] {color:#b4f5c7}
 .vut canvas[data-mode=select] {cursor:grab}
 .vut canvas[data-mode=pan] {cursor:move}
@@ -188,7 +190,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       </div>
       <div class="vut-inspector" data-preview-controls hidden>
         <button type="button" data-action="preview">${icon('play')} Anteprima esercizio</button>
+        <button type="button" data-action="video">${icon('video')} Esporta animazione</button>
+        <a data-video-download hidden>Scarica video</a>
         <small data-preview-mode></small>
+        <small data-video-status role="status" aria-live="polite"></small>
       </div>
       <div class="vut-palette" aria-label="Attrezzi e percorsi">
         <button data-tool="select" type="button" aria-pressed="true">${icon('select')} Seleziona</button>
@@ -227,6 +232,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   const canvas = find('canvas');
   const status = find('[role=status]');
   const previewCanvas = find('[data-preview]');
+  const videoStatus = find('[data-video-status]');
+  const videoDownload = find('[data-video-download]');
   let session = newSession();
   let sessions = [];
   let index = 0;
@@ -282,6 +289,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   function openExercise(next) {
     stopPreview();
+    clearVideo();
     index = next;
     selected = -1;
     routeStart = null;
@@ -376,15 +384,19 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       start ??= time;
       const elapsed = time-start;
       if (elapsed >= plan.duration+650) return stopPreview();
-      renderPreview(context,plan,elapsed);
+      context.clearRect(0,0,previewCanvas.width,previewCanvas.height);
+      renderPreview(context,plan,elapsed,viewport);
       playback.frame = requestAnimationFrame(tick);
     }
     playback.frame = requestAnimationFrame(tick);
   }
 
-  function renderPreview(context,plan,elapsed) {
-    context.clearRect(0,0,previewCanvas.width,previewCanvas.height);
-    const unit = canvas.width/1500*viewport.zoom;
+  function renderPreview(context,plan,elapsed,{zoom,x:offsetX,y:offsetY}) {
+    const unit = context.canvas.width/1500*zoom;
+    const at = (x,y,z) => {
+      const [px,py] = projectPoint(context.canvas,view3d,angle,x,y,z);
+      return [px*zoom+offsetX,py*zoom+offsetY];
+    };
     for (const {player,bib,steps} of plan.runners) {
       if (player && elapsed < steps[0].start) {
         const rotation = (player.rotation || 0)*Math.PI/180;
@@ -416,6 +428,71 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       const {step,progress} = trackPosition(plan.passes,elapsed);
       const {x,y} = pointAlongRoute(step.route,progress);
       drawBall(context,...at(x,y),unit);
+    }
+  }
+
+  function clearVideo() {
+    if (!videoDownload.hidden) URL.revokeObjectURL(videoDownload.href);
+    videoDownload.hidden = true;
+    videoDownload.removeAttribute('href');
+    videoStatus.textContent = '';
+  }
+
+  async function exportAnimation() {
+    const objects = exercise().objects;
+    const plan = previewPlan(objects);
+    clearVideo();
+    if (!plan.duration) {
+      videoStatus.textContent = 'Aggiungi un percorso o un passaggio per esportare il video.';
+      return;
+    }
+
+    const board = document.createElement('canvas');
+    if (!board.captureStream || !window.MediaRecorder) {
+      videoStatus.textContent = 'Esportazione video non disponibile in questo browser.';
+      return;
+    }
+    setBusy(true);
+    videoStatus.textContent = 'Preparazione video…';
+    const fullPitch = {zoom:1,x:0,y:0};
+    board.width = 1200;
+    board.height = 800;
+    const recording = document.createElement('canvas');
+    recording.width = board.width;
+    recording.height = board.height;
+    const context = recording.getContext('2d');
+    const title = exercise().title.trim() || session.title.trim() || 'Esercizio';
+    let stream;
+    try {
+      drawField(board,objects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects);
+      const draw = elapsed => {
+        context.drawImage(board,0,0);
+        renderPreview(context,plan,elapsed,fullPitch);
+      };
+      draw(0);
+      stream = recording.captureStream(30);
+      const mimeType = ['video/mp4','video/webm;codecs=vp8','video/webm']
+        .find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream,mimeType ? {mimeType} : undefined);
+      const duration = Math.min(plan.duration,9350);
+      const video = await recordTrainingVideo(recorder,duration+650,time => {
+        if (!host.isConnected) return false;
+        draw(clamp(time/duration,0,1)*plan.duration);
+        return true;
+      });
+      if (!host.isConnected) return;
+      const extension = video.type.startsWith('video/mp4') ? 'mp4' : 'webm';
+      const filename = title.replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-|-$/g,'').slice(0,80) || 'Esercizio';
+      videoDownload.href = URL.createObjectURL(video);
+      videoDownload.download = `${filename}.${extension}`;
+      videoDownload.hidden = false;
+      videoStatus.textContent = 'Video pronto.';
+    } catch (error) {
+      console.error(error);
+      videoStatus.textContent = 'Esportazione video non riuscita. Riprova.';
+    } finally {
+      stream?.getTracks().forEach(track => track.stop());
+      if (host.isConnected) setBusy(false);
     }
   }
 
@@ -882,6 +959,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.closest('.vut-menu')) button.closest('details').open = false;
     if (['remove-object','rotate-object','object-left','undo'].includes(button.dataset.action)) stopPreview();
     switch (button.dataset.action) {
+      case 'video':
+        if (!exporting) void exportAnimation();
+        break;
       case 'preview':
         if (playback) stopPreview();
         else startPreview();
@@ -1030,6 +1110,40 @@ function segmentDistance([x,y],[ax,ay],[bx,by]) {
   const dy = by-ay;
   const fraction = clamp(((x-ax)*dx+(y-ay)*dy)/(dx*dx+dy*dy || 1),0,1);
   return Math.hypot(x-ax-fraction*dx,y-ay-fraction*dy);
+}
+
+function recordTrainingVideo(recorder,duration,draw) {
+  return new Promise((resolve,reject) => {
+    const chunks = [];
+    let frame;
+    let start;
+    const fail = error => {
+      cancelAnimationFrame(frame);
+      reject(error);
+      if (recorder.state !== 'inactive') recorder.stop();
+    };
+    recorder.ondataavailable = event => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    recorder.onerror = event => fail(event.error);
+    recorder.onstop = () => {
+      cancelAnimationFrame(frame);
+      if (chunks.length) resolve(new Blob(chunks,{type:recorder.mimeType || chunks[0].type}));
+      else reject(new Error('Empty video recording'));
+    };
+    const tick = time => {
+      try {
+        start ??= time;
+        const elapsed = time-start;
+        if (!draw(elapsed) || elapsed >= duration) recorder.stop();
+        else frame = requestAnimationFrame(tick);
+      } catch (error) {
+        fail(error);
+      }
+    };
+    recorder.start();
+    frame = requestAnimationFrame(tick);
+  });
 }
 
 const isPass = object => object.type === 'pass' && Boolean(object.end);
