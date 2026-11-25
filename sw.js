@@ -1,6 +1,6 @@
 
 /* Volla United Academy - Service Worker v20261104.2 */
-const CACHE = 'volla-united-shell-20261117-calendari-only-v4';
+const CACHE = 'volla-united-shell-20261126-import-v1';
 
 self.addEventListener('install', event =>
   event.waitUntil(self.skipWaiting())
