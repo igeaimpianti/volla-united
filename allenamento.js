@@ -2,8 +2,20 @@ const table = 'vu_training_sessions';
 const equipment = {
   player: 'Giocatore', opponent: 'Avversario', ball: 'Pallone',
   disc: 'Cinesino', cone: 'Cono', hurdle: 'Ostacolo', ladder: 'Scaletta',
-  goal: 'Porticina', pole: 'Paletto', run: 'Corsa', pass: 'Passaggio'
+  goal: 'Porticina', pole: 'Paletto', run: 'Corsa', pass: 'Passaggio', zone: 'Area'
 };
+const discColors = {
+  pink:['Rosa','#ff50a2'], red:['Rosso','#ff394f'], blue:['Blu','#449aff'],
+  yellow:['Giallo','#ffe04d'], orange:['Arancione','#ff9c3c'],
+  green:['Verde','#90f35a'], white:['Bianco','#f8f8fb']
+};
+const zoneColors = {blue:discColors.blue,red:discColors.red};
+const isDisc = object => object?.type === 'disc';
+const isZone = object => object?.type === 'zone';
+const colorKey = (palette,key,fallback) => Object.hasOwn(palette,key) ? key : fallback;
+const colorOptions = palette => Object.entries(palette).map(([key,[label]]) =>
+  `<option value="${key}">${label}</option>`).join('');
+
 const bibs = {
   red:['Rossa','#f14967'], blue:['Azzurra','#61c9ff'], yellow:['Gialla','#fce34c'],
   green:['Verde','#83ed62'], orange:['Arancione','#ff9b48'], purple:['Viola','#c294ff'],
@@ -44,7 +56,7 @@ const icons = {
   select:'M4 3l15 10-7 1-3 7z', pan:'M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3',
   player:'M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 21v-3a7 7 0 0 1 14 0v3', opponent:'M12 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM5 21v-3a7 7 0 0 1 14 0v3',
   ball:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 5 4 3-2 5h-4l-2-5 4-3zm0 0V3m8 6-4 2m-2 5 3 4m-7-4-3 4m1-9L4 9',
-  disc:'M3 17h18l-4-7H7zM10 10h4', cone:'M3 20h18M7 20l4-16h2l4 16M9 12h6',
+  zone:'M12 3 22 12 12 21 2 12z', disc:'M3 17h18l-4-7H7zM10 10h4', cone:'M3 20h18M7 20l4-16h2l4 16M9 12h6',
   hurdle:'M4 20V7h16v13M2 20h5m10 0h5', ladder:'M7 3v18M17 3v18M7 5h10M7 10h10M7 15h10M7 20h10',
   goal:'M3 19V6h18v13M3 9h18M7 9v10m5-10v10m5-10v10M3 14h18',
   pole:'M12 3v17M6 21h12', run:'M3 18 17 6m-7 0h7v7', pass:'M4 18l2-2m3-3 2-2m3-3 3-3m-7 0h7v7',
@@ -123,7 +135,8 @@ const styles = `
 .vut-inspector strong {font-size:13px}
 .vut-inspector label {display:flex;align-items:center;gap:5px}
 .vut-inspector select {width:auto}
-.vut-inspector input {width:78px}
+.vut-inspector input[type=number] {width:78px}
+.vut-inspector input[type=checkbox] {width:auto}
 .vut-exercise-details {display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,120px);gap:8px}
 .vut-exercise-details>label:last-child {grid-column:1/-1}
 .vut textarea {resize:vertical}
@@ -203,10 +216,14 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       </div>
       <div class="vut-palette" aria-label="Attrezzi e percorsi">
         <button data-tool="select" type="button" aria-pressed="true">${icon('select')} Seleziona</button>
-        ${Object.entries(equipment).map(([type,label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${icon(type)} ${label}</button>`).join('')}
+        ${Object.entries(equipment).map(([type,label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${icon(type)} ${type === 'zone' ? 'Delimita area' : label}</button>`).join('')}
       </div>
       <div class="vut-inspector">
         <strong data-selection>Attrezzo</strong>
+        <label data-show-zones hidden><input type="checkbox" name="show-zones" checked> Mostra aree</label>
+        <label data-align-discs hidden><input type="checkbox" name="align-discs" checked> Allinea cinesini</label>
+        <label data-disc-color hidden>Colore cinesino <select name="disc-color">${colorOptions(discColors)}</select></label>
+        <label data-zone-color hidden>Colore area <select name="zone-color">${colorOptions(zoneColors)}</select></label>
         <label data-bib hidden>Casacca <select name="bib">
           ${Object.entries(bibs).map(([value,[name]]) => `<option value="${value}">${name}</option>`).join('')}
         </select></label>
@@ -258,6 +275,12 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let busy = false;
   let tool = 'select';
   let selected = -1;
+  let discColor = 'pink';
+  let zoneColor = 'blue';
+  const zoneCorners = [];
+  let alignment = null;
+  const showZones = field('show-zones');
+  const alignDiscs = field('align-discs');
   let routeStart = null;
   let drag = null;
   let view3d = false;
@@ -353,7 +376,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (tool === 'select' && entry && !entry.end && selectionRotation(entry) !== null) {
       grip = rotationGrip(entry);
     }
-    drawField(canvas,objects,view3d,angle,selected,routeStart,viewport,screenUnits(1),grip,playback?.hiddenObjects);
+    drawField(canvas,objects,view3d,angle,selected,routeStart,viewport,screenUnits(1),grip,playback?.hiddenObjects,zoneCorners,showZones.checked,alignment);
   }
 
   function queueBoard() {
@@ -483,7 +506,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     let stream;
     try {
       const boardObjects = showArrows ? objects : objects.filter(object => !object.end);
-      drawField(board,boardObjects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects);
+      drawField(board,boardObjects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects,[],showZones.checked);
       const draw = elapsed => {
         context.drawImage(board,0,0);
         renderPreview(context,plan,elapsed,fullPitch);
@@ -527,6 +550,12 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     action('undo').disabled = busy || !undo.length;
     action('zoom-in').disabled = busy || viewport.zoom >= 4;
     action('zoom-out').disabled = busy || viewport.zoom <= 1;
+    find('[data-show-zones]').hidden = !objects.some(isZone);
+    find('[data-align-discs]').hidden = !isDisc(entry) && tool !== 'disc';
+    find('[data-disc-color]').hidden = !isDisc(entry) && tool !== 'disc';
+    field('disc-color').value = isDisc(entry) ? colorKey(discColors,entry.color,'pink') : discColor;
+    find('[data-zone-color]').hidden = !isZone(entry) && tool !== 'zone';
+    field('zone-color').value = isZone(entry) ? colorKey(zoneColors,entry.color,'blue') : zoneColor;
     const bibTarget = isPlayer(entry) ? entry : null;
     const bibTool = isPlayer({type:tool}) ? tool : null;
     find('[data-bib]').hidden = !bibTarget && !bibTool;
@@ -558,6 +587,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       ? equipment[entry.type] + (passNumber ? ' ' + passNumber : '') + ' selezionato'
       : 'Nessun elemento selezionato';
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
+      : tool === 'zone' ? `Tocca quattro cinesini sul campo. ${zoneCorners.length}/4 selezionati.`
+      : tool === 'disc' && alignDiscs.checked ? 'Tocca per posizionare o trascina prima di rilasciare per vedere le guide.'
+      : isZone(entry) ? 'Per modificare il perimetro, sposta i cinesini ai vertici.'
       : routeStart ? 'Tocca la destinazione della freccia.'
       : tool === 'select' && entry?.end ? 'Trascina i cerchi alle estremità per cambiare la lunghezza o il rombo centrale per curvare la freccia.'
       : tool === 'select' && rotation !== null ? 'Trascina l’elemento per spostarlo o la maniglia ↻ per ruotarlo.'
@@ -568,6 +600,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   function setTool(next) {
     tool = next;
+    zoneCorners.length = 0;
+    alignment = null;
     routeStart = null;
     if (tool !== 'select' && tool !== 'pan') selected = -1;
     host.querySelectorAll('[data-tool]').forEach(button =>
@@ -646,10 +680,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     return picked;
   }
 
-  function pickObject(point) {
+  function pickObject(point, accepts = object => !isZone(object)) {
     let best = screenUnits(21);
     let picked = -1;
     exercise().objects.forEach((entry,index) => {
+      if (!accepts(entry)) return;
       const base = at(entry.x,entry.y);
       let distance = Math.hypot(point[0]-base[0],point[1]-base[1]);
       if (entry.end) {
@@ -666,6 +701,35 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     return picked;
   }
 
+  function placeZone(point) {
+    const objects = exercise().objects;
+    const index = pickObject(point,isDisc);
+    if (index < 0) return;
+    const existing = zoneCorners.indexOf(index);
+    if (existing >= 0) {
+      zoneCorners.splice(existing,1);
+      return paint();
+    }
+
+    const corners = [...zoneCorners,index];
+    if (corners.length < 4) {
+      zoneCorners.push(index);
+      return paint();
+    }
+    const discs = corners.map(index => objects[index]);
+    if (!sortZonePoints(discs.map(({x,y}) => [x,y])).length) {
+      find('[data-hint]').textContent = 'Scegli un altro cinesino per ottenere un’area con quattro vertici distinti.';
+      return;
+    }
+    snapshot();
+    showZones.checked = true;
+    const discIds = discs.map(disc => disc.id ??= crypto.randomUUID());
+    selected = objects.push({type:'zone',discIds,color:zoneColor})-1;
+    setTool('select');
+    markDirty();
+    paint();
+  }
+
   function place(point) {
     const [x,y] = pitchPoint(point);
     if (x < 0 || x > 100 || y < 0 || y > 64) return;
@@ -674,7 +738,12 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       find('[data-hint]').textContent = 'Massimo 90 elementi per esercizio.';
       return;
     }
+    if (tool === 'zone') return placeZone(point);
     const entry = {type:tool,x,y};
+    if (isDisc(entry)) {
+      [entry.x,entry.y] = alignDisc([x,y]).point;
+      entry.color = discColor;
+    }
     if (tool === 'run' || tool === 'pass') {
       if (!routeStart) {
         routeStart = [x,y];
@@ -700,6 +769,34 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     paint();
   }
 
+  function alignDisc(point, omitted = -1) {
+    return snapDisc(point,exercise().objects,omitted,at,alignDiscs.checked ? screenUnits(8) : 0);
+  }
+
+  function previewDisc(point) {
+    const [x,y] = pitchPoint(point);
+    alignment = x >= 0 && x <= 100 && y >= 0 && y <= 64
+      ? {...alignDisc([x,y]),color:discColors[discColor][1]} : null;
+    queueBoard();
+  }
+
+  function clearAlignment() {
+    if (!alignment) return;
+    alignment = null;
+    queueBoard();
+  }
+
+  showZones.onchange = () => {
+    if (!showZones.checked && isZone(exercise().objects[selected])) selected = -1;
+    clearVideo();
+    paint();
+  };
+
+  alignDiscs.onchange = () => {
+    clearAlignment();
+    paint();
+  };
+
   function pinchState() {
     const [a,b] = pointers.values();
     return {center:[(a[0]+b[0])/2,(a[1]+b[1])/2], distance:Math.max(1,Math.hypot(a[0]-b[0],a[1]-b[1]))};
@@ -708,6 +805,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   function resetPointers() {
     const activePointers = [...pointers.keys()];
     pointers.clear();
+    clearAlignment();
     drag = null;
     gesture = null;
     pointerEvents?.abort();
@@ -742,6 +840,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     try { canvas.setPointerCapture(event.pointerId); } catch { /* Restano attivi gli eventi di fine gesto. */ }
     if (pointers.size === 2) {
       const state = pinchState();
+      clearAlignment();
       gesture = {...state, zoom:viewport.zoom, anchor:viewPoint(state.center,viewport)};
       drag = null;
       return;
@@ -750,18 +849,28 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     let handle = null;
     if (tool === 'select') {
       handle = pickHandle(exercise().objects[selected],point);
-      if (!handle) selected = pickObject(point);
+      if (!handle) {
+        selected = pickObject(point);
+        const objects = exercise().objects;
+        if (selected < 0 && showZones.checked) selected = objects.findLastIndex(entry =>
+          isZone(entry) && pointInZone(point,zonePoints(entry,objects).map(vertex => at(...vertex))));
+      }
     }
     drag = {
       id:event.pointerId, point, x, y, moved:false, viewport, handle,
-      original:tool === 'select' && selected >= 0 ? structuredClone(exercise().objects[selected]) : null
+      original:tool === 'select' && selected >= 0 && !isZone(exercise().objects[selected]) ? structuredClone(exercise().objects[selected]) : null
     };
+    if (tool === 'disc' && alignDiscs.checked) previewDisc(point);
     paint();
   };
 
   canvas.onpointermove = event => {
-    if (!pointers.has(event.pointerId) || busy) return;
+    if (busy) return;
     const point = screenPoint(event);
+    if (!pointers.has(event.pointerId)) {
+      if (!pointers.size && !playback && event.pointerType === 'mouse' && tool === 'disc' && alignDiscs.checked) previewDisc(point);
+      return;
+    }
     pointers.set(event.pointerId,point);
     if (gesture) {
       const state = pinchState();
@@ -773,7 +882,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const [startX,startY] = drag.point;
     const threshold = 3*canvas.width/canvas.getBoundingClientRect().width;
     if (!drag.moved && Math.hypot(point[0]-startX,point[1]-startY) < threshold) return;
-    if (tool === 'pan') {
+    if (tool === 'disc' && alignDiscs.checked) {
+      previewDisc(point);
+    } else if (tool === 'pan') {
       viewport = cameraFor(drag.viewport.zoom,point,viewPoint(drag.point,drag.viewport));
     } else if (drag.original) {
       const [x,y] = pitchPoint(point);
@@ -786,6 +897,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         exercise().objects[selected] = drag.handle
           ? editRoute(original,drag.handle,x-drag.x,y-drag.y)
           : moveObject(original,x-drag.x,y-drag.y);
+        if (isDisc(original) && alignDiscs.checked) {
+          const entry = exercise().objects[selected];
+          alignment = alignDisc([entry.x,entry.y],selected);
+          [entry.x,entry.y] = alignment.point;
+        }
       }
       if (!drag.moved) markDirty();
     }
@@ -799,7 +915,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const active = drag;
     drag = null;
     if (!pointers.size) resetPointers();
-    if (complete && !busy && active?.id === event.pointerId && !active.moved && tool !== 'select' && tool !== 'pan') {
+    if (complete && !busy && active?.id === event.pointerId && (!active.moved || (tool === 'disc' && alignDiscs.checked)) && tool !== 'select' && tool !== 'pan') {
       place(screenPoint(event));
     } else if (!pointers.size) paint();
   }
@@ -807,6 +923,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   function finishPointer(event) { endPointer(event,true); }
   function cancelPointer(event) { endPointer(event,false); }
   canvas.onpointerup = finishPointer;
+  canvas.onpointerleave = () => {
+    if (!pointers.size) clearAlignment();
+  };
   canvas.onpointercancel = canvas.onlostpointercapture = cancelPointer;
   canvas.addEventListener('wheel', event => {
     if (busy || (!event.ctrlKey && !event.metaKey && tool !== 'pan')) return;
@@ -831,6 +950,26 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     rotateSelection(Number(field('rotation').value));
     field('rotation').value = selectionRotation(exercise().objects[selected]) ?? '';
   };
+
+  field('disc-color').onchange = () => {
+    discColor = colorKey(discColors,field('disc-color').value,'pink');
+    changeSelectedColor(isDisc,discColor);
+  };
+
+  field('zone-color').onchange = () => {
+    zoneColor = colorKey(zoneColors,field('zone-color').value,'blue');
+    changeSelectedColor(isZone,zoneColor);
+  };
+
+  function changeSelectedColor(matches,color) {
+    const entry = exercise().objects[selected];
+    if (!matches(entry)) return;
+    snapshot();
+    entry.color = color;
+    stopPreview();
+    markDirty();
+    paint();
+  }
 
   field('bib').onchange = () => {
     const bib = field('bib').value;
@@ -972,6 +1111,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   async function exportPdf() {
     const copy = structuredClone(session);
+    if (!showZones.checked) {
+      for (const entry of copy.exercises) entry.objects = entry.objects.filter(object => !isZone(object));
+    }
     exporting = true;
     action('pdf').disabled = true;
     const pending = 'Preparazione del PDF…';
@@ -1001,7 +1143,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.dataset.exercise != null) return openExercise(Number(button.dataset.exercise));
     if (button.dataset.tool) {
       stopPreview();
-      setTool(button.dataset.tool);
+      setTool(tool === 'zone' && button.dataset.tool === 'zone' ? 'select' : button.dataset.tool);
       return paint();
     }
     if (button.closest('.vut-menu')) button.closest('details').open = false;
@@ -1101,7 +1243,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       case 'remove-object':
         if (selected < 0) return;
         snapshot();
-        exercise().objects.splice(selected,1);
+        {
+          const objects = exercise().objects;
+          const [removed] = objects.splice(selected,1);
+          if (isDisc(removed) && removed.id) {
+            exercise().objects = objects.filter(entry => !isZone(entry) || !entry.discIds.includes(removed.id));
+          }
+        }
         selected = -1;
         markDirty();
         paint();
@@ -1109,6 +1257,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       case 'undo':
         if (!undo.length) return;
         exercise().objects = undo.pop();
+        zoneCorners.length = 0;
         selected = -1;
         routeStart = null;
         markDirty();
@@ -1624,7 +1773,54 @@ function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0) {
   ctx.restore();
 }
 
-function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null, hiddenObjects) {
+function snapDisc([x,y],objects,omitted,project,tolerance) {
+  const origin = project(x,y);
+  const matches = [null,null];
+  const distances = [tolerance,tolerance];
+  objects.forEach((entry,index) => {
+    if (!isDisc(entry) || index === omitted) return;
+    const candidates = [project(entry.x,y),project(x,entry.y)];
+    candidates.forEach(([px,py],axis) => {
+      const distance = Math.hypot(px-origin[0],py-origin[1]);
+      if (distance < distances[axis]) {
+        distances[axis] = distance;
+        matches[axis] = entry;
+      }
+    });
+  });
+  const point = [matches[0]?.x ?? x,matches[1]?.y ?? y];
+  const lines = matches.filter(Boolean).map(({x,y}) => [[x,y],point]);
+  return {point,lines};
+}
+
+function sortZonePoints(points) {
+  if (points.length !== 4) return [];
+  const center = points.reduce(([x,y],[px,py]) => [x+px/4,y+py/4],[0,0]);
+  const angle = ([x,y]) => Math.atan2(y-center[1],x-center[0]);
+  const vertices = [...points].sort((a,b) => angle(a)-angle(b));
+  const area = vertices.reduce((sum,[x,y],index) => {
+    const [nextX,nextY] = vertices[(index+1)%4];
+    return sum+x*nextY-y*nextX;
+  },0);
+  const distinct = new Set(points.map(point => point.join(','))).size === 4;
+  return distinct && Math.abs(area) > 0.02 ? vertices : [];
+}
+
+function zonePoints(zone,objects) {
+  const discs = zone.discIds.map(id => objects.find(entry => isDisc(entry) && entry.id === id));
+  return sortZonePoints(discs.filter(Boolean).map(({x,y}) => [x,y]));
+}
+
+function pointInZone([x,y],points) {
+  let inside = false;
+  points.forEach(([ax,ay],index) => {
+    const [bx,by] = points[(index+1)%points.length];
+    if ((ay > y) !== (by > y) && x < (bx-ax)*(y-ay)/(by-ay)+ax) inside = !inside;
+  });
+  return inside;
+}
+
+function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null, hiddenObjects, zoneCorners = [], showZones = true, alignment = null) {
   const ctx = canvas.getContext('2d');
   const {width:w,height:h} = canvas;
   const cos = Math.cos(angle);
@@ -1693,6 +1889,22 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     path([[goalX,28.4],[goalX+(left ? -2 : 2),28.4],[goalX+(left ? -2 : 2),35.6],[goalX,35.6]],'#d6e7d842',white,2);
   }
 
+  objects.forEach((entry,index) => {
+    if (!showZones || !isZone(entry)) return;
+    const vertices = zonePoints(entry,objects);
+    if (!vertices.length) return;
+    const color = zoneColors[colorKey(zoneColors,entry.color,'blue')][1];
+    path(vertices,color+'50',color,index === selected ? 6 : 3);
+  });
+
+  if (alignment) {
+    for (const line of alignment.lines) {
+      path(line,null,'#152a31',6/viewport.zoom,[10,7]);
+      path(line,null,'#d8f8ff',3/viewport.zoom,[10,7]);
+    }
+    if (alignment.color) path(ring(...alignment.point,1.5),alignment.color+'aa','#fff',2/viewport.zoom);
+  }
+
   const passLabels = [];
   objects.forEach((entry,index) => {
     const {type,end} = entry;
@@ -1717,7 +1929,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     }
   });
 
-  const props = objects.map((entry,index) => ({entry,index})).filter(({entry}) => !entry.end && !hiddenObjects?.has(entry));
+  const props = objects.map((entry,index) => ({entry,index})).filter(({entry}) => !entry.end && !isZone(entry) && !hiddenObjects?.has(entry));
   if (perspective) props.sort((a,b) =>
     (a.entry.x-b.entry.x)*sin+(a.entry.y-b.entry.y)*cos);
   for (const {entry,index} of props) {
@@ -1725,7 +1937,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     const rotation = (entry.rotation || 0)*Math.PI/180;
     const local = ([a,b,z]) => [x+a*Math.cos(rotation)-b*Math.sin(rotation),y+a*Math.sin(rotation)+b*Math.cos(rotation),z];
     const prop = (points,fill,stroke,weight) => path(points.map(local),fill,stroke,weight);
-    if (index === selected) path(ring(x,y,3.1),null,'#fff',4,[9,6]);
+    if (index === selected || zoneCorners.includes(index)) path(ring(x,y,3.1),null,'#fff',4,[9,6]);
     if (perspective) path(ring(x+.4,y+.6,1.6),'#132e2390');
 
     if (type === 'hurdle') {
@@ -1758,7 +1970,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
       prop([[-2.5,1.3,0],[-2.5,-1.3,z],[2.5,-1.3,z],[2.5,1.3,0]],'#c1d8d765','#a4bbbb',4);
       prop([[-2.5,-1.3,0],[-2.5,-1.3,z],[2.5,-1.3,z],[2.5,-1.3,0]],null,'#fff',7);
     } else if (type === 'cone' || type === 'disc') {
-      const color = type === 'disc' ? '#ff50a2' : '#ff9c3c';
+      const color = type === 'disc' ? discColors[colorKey(discColors,entry.color,'pink')][1] : '#ff9c3c';
       path(ring(x,y,1.5),color,'#502946',3);
       if (perspective && type === 'cone') prop([[-1.4,0,0],[0,0,2.9],[1.4,0,0]],'#ff9c3c','#a84a21',3);
       else path(ring(x,y,.55,type==='disc' ? .4 : 0),'#ffe0ac');
