@@ -16,6 +16,8 @@ const isZone = object => object?.type === 'zone';
 const isGoalMarker = object => ['goal','cone','disc','pole'].includes(object?.type);
 const progressionNames = ['Tiro iniziale','1 contro 1','2 contro 1','2 contro 2'];
 const defaultProgressionText = 'Tiro: porta 1. 1 contro 1: porta 2. 2 contro 1: porta 3. 2 contro 2: porta 4.';
+const progressionDoorOptions = Array.from({length:4},(_,index) =>
+  `<option value="${index}">Porta ${index+1}</option>`).join('');
 const colorKey = (palette,key,fallback) => Object.hasOwn(palette,key) ? key : fallback;
 const colorOptions = palette => Object.entries(palette).map(([key,[label]]) =>
   `<option value="${key}">${label}</option>`).join('');
@@ -143,6 +145,9 @@ const styles = `
 .vut [data-progression] label {margin:8px 0;flex-wrap:wrap}
 .vut [data-progression] small {display:block;margin:6px 0}
 .vut [data-progression] textarea {width:100%}
+.vut-progression-goals {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:8px;margin:10px 0}
+.vut-progression-goals fieldset {min-width:0;border:1px solid var(--line);border-radius:8px;padding:5px 10px}
+.vut-progression-goals legend {font-size:13px;font-weight:700;padding:0 4px}
 .vut canvas[data-mode=progression] {cursor:crosshair}
 .vut-inspector label {display:flex;align-items:center;gap:5px}
 .vut-inspector select {width:auto}
@@ -231,6 +236,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
           <button type="button" data-action="map-progression">Indica giocatori e porte sul campo</button>
           <button type="button" data-action="cancel-mapping" hidden>Annulla selezione</button>
           <button type="button" data-action="disable-progression" hidden>Disattiva animazione automatica</button>
+        </div>
+        <div class="vut-progression-goals" data-progression-goals hidden>
+          ${progressionNames.map((name,i) => `<fieldset>
+            <legend data-progression-player="${i}">Giocatore ${i+1} · ${name}</legend>
+            <label>Porta da attaccare <select name="progression-goal-${i}">${progressionDoorOptions}</select></label>
+            <label>Seconda porta <select name="progression-alt-${i}"><option value="">Nessuna</option>${progressionDoorOptions}</select></label>
+          </fieldset>`).join('')}
         </div>
         <label>Descrivi in quali porte si conclude ogni fase
           <textarea name="progression-text" rows="2" maxlength="400" aria-describedby="vut-progression-example"></textarea>
@@ -513,9 +525,15 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
     if (plan.passes.length) {
       const {step,progress} = trackPosition(plan.passes,elapsed);
-      const {x,y} = pointAlongRoute(step.route,progress);
+      const {x,y,segment} = pointAlongRoute(step.route,progress);
       const [px,py] = at(x,y);
-      drawBall(context,px,py+(step.kind === 'conduzione' ? 8*unit : 0),unit);
+      if (step.kind === 'conduzione') {
+        const [ax,ay] = at(...segment.a);
+        const [bx,by] = at(...segment.b);
+        const length = Math.hypot(bx-ax,by-ay) || 1;
+        const lead = Math.min(1,progress*9,(1-progress)*9)*12*unit;
+        drawBall(context,px+(bx-ax)/length*lead,py+(by-ay)/length*lead,unit);
+      } else drawBall(context,px,py,unit);
     }
     if (plan.phases) {
       const phase = plan.phases.findLast(phase => elapsed >= phase.start);
@@ -535,10 +553,34 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   function syncProgressionFields() {
     const progression = exercise().progression;
     field('progression-text').value = progression?.text ?? defaultProgressionText;
+    syncGoalSelectors(progressionGoalOrder(field('progression-text').value) ?? progressionGoalOrder(defaultProgressionText));
     field('progression-team').value = String(progression?.team ?? 2);
     progressionStatus(progression && progressionLayout(exercise().objects,progression)
       ? 'Giocatori e porte associati.' : '');
   }
+
+  function syncGoalSelectors(order) {
+    if (!order) return;
+    order.forEach(([first,second],index) => {
+      field(`progression-goal-${index}`).value = String(first);
+      field(`progression-alt-${index}`).value = second == null ? '' : String(second);
+    });
+  }
+
+  field('progression-text').oninput = () => {
+    syncGoalSelectors(progressionGoalOrder(field('progression-text').value));
+  };
+
+  find('[data-progression-goals]').onchange = () => {
+    const order = progressionNames.map((_,i) => {
+      const first = field(`progression-goal-${i}`).value;
+      const alternative = field(`progression-alt-${i}`);
+      if (alternative.value === first) alternative.value = '';
+      return alternative.value === '' ? [Number(first)] : [Number(first),Number(alternative.value)];
+    });
+    field('progression-text').value = progressionNames.map((name,i) =>
+      `${name}: ${order[i].map(goal => `porta ${goal+1}`).join(' o ')}.`).join(' ');
+  };
 
   function mappingHint() {
     const {players,goals,post} = progressionMapping;
@@ -693,7 +735,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const progression = exercise().progression;
     action('cancel-mapping').hidden = !progressionMapping;
     action('disable-progression').hidden = !progression?.active;
-    action('generate-progression').disabled = busy || Boolean(progressionMapping) || !progressionLayout(objects,progression);
+    const layout = progressionLayout(objects,progression);
+    find('[data-progression-goals]').hidden = !layout || Boolean(progressionMapping);
+    action('generate-progression').disabled = busy || Boolean(progressionMapping) || !layout;
+    layout?.players.forEach((player,i) => {
+      const bib = bibs[playerBib(player)][0];
+      find(`[data-progression-player="${i}"]`).textContent = `G${i+1} · ${bib} · ${progressionNames[i]}`;
+    });
     canvas.dataset.mode = tool;
     action('remove-object').disabled = busy || !entry;
     action('rotate-object').disabled = action('object-left').disabled = busy || rotation === null;
@@ -1753,22 +1801,43 @@ function buildProgression(objects,{players,lines},{team,order}) {
   const hiddenObjects = new Set([...players,...objects.filter(object => object.type === 'ball')]);
   const durationFor = (from,to,unitsPerSecond,minimum = 0) =>
     Math.max(minimum,Math.hypot(to[0]-from[0],to[1]-from[1])/unitsPerSecond*1000);
+  const pointBetween = (a,b,fraction) => [
+    a[0]+(b[0]-a[0])*fraction,a[1]+(b[1]-a[1])*fraction
+  ];
+  const distance = (a,b) => Math.hypot(a[0]-b[0],a[1]-b[1]);
   const add = (steps,from,to,start,duration,kind) => {
-    const route = routeFromPoints([from,to]);
+    let route = routeFromPoints([from,to]);
+    if (!route && steps === passes) {
+      route = {segments:[{a:from,b:from,start:0,length:1}],length:0,jumps:[]};
+    }
     if (route) steps.push({route,start,end:start+duration,duration,kind,receipts:[]});
   };
   const move = (i,to,start,duration,kind) => {
     add(runners[i].steps,positions[i],to,start,duration,kind);
     positions[i] = to;
   };
-  const defend = (i,target,start,duration,offset) => {
-    const [x,y] = positions[i];
-    const dx = target[0]-x;
-    const dy = target[1]-y;
-    const distance = Math.hypot(dx,dy);
-    const travel = Math.max(0,Math.min(distance-3,duration*.0075));
-    if (travel < .1) return;
-    move(i,limitPoint([x+dx/distance*travel,y+dy/distance*travel+offset]),start,duration,'difesa');
+  const carryBall = (i,to,start,duration) => {
+    add(passes,positions[i],to,start,duration,'conduzione');
+    move(i,to,start,duration,'conduzione');
+  };
+  const defend = (defenders,ball,support,goal,start,duration) => {
+    if (!defenders.length) return;
+    // The nearest defender pressures the ball. The other stays goal-side of the runner.
+    const [first,second] = [...defenders].sort((a,b) => distance(positions[a],ball)-distance(positions[b],ball));
+    const recover = (i,target) => {
+      const from = positions[i];
+      const remaining = distance(from,target);
+      if (remaining < .2) return;
+      move(i,pointBetween(from,target,Math.min(1,duration*.0075/remaining)),start,duration,'difesa');
+    };
+    const goalSide = (point,space) => pointBetween(point,goal,Math.min(1,space/(distance(point,goal) || 1)));
+    recover(first,goalSide(ball,4));
+    if (second !== undefined) recover(second,goalSide(support,3));
+  };
+  const opening = (from,to,defenders) => {
+    const crowding = defenders.reduce((sum,i) =>
+      sum+Math.max(0,8-segmentDistance(positions[i],from,to)),0);
+    return crowding;
   };
   let start = 0;
   order.forEach((choices,i) => {
@@ -1801,36 +1870,52 @@ function buildProgression(objects,{players,lines},{team,order}) {
     phases.push({start,label:`${progressionNames[i]} · Porta ${goalIndex+1}`});
     let at = start;
     let shooter = i;
-    if (teamMate >= 0) {
-      const side = (startWithBall[0]-center[0])*ny-(startWithBall[1]-center[1])*nx > 0 ? -1 : 1;
-      const lanes = [side,-side].map(sign => [
-        limitPoint([center[0]+nx*20-ny*10*sign,center[1]+ny*20+nx*10*sign]),
-        limitPoint([center[0]+nx*13+ny*10*sign,center[1]+ny*13-nx*10*sign])
-      ]);
-      const room = ([,receive]) => Math.min(...defenders.map(j => Math.hypot(receive[0]-positions[j][0],receive[1]-positions[j][1])));
-      const [carry,receive] = room(lanes[1]) > room(lanes[0])+1 ? lanes[1] : lanes[0];
-      const receivingFrom = positions[teamMate];
-      const runTime = durationFor(receivingFrom,receive,9,700);
-      const carryTime = durationFor(startWithBall,carry,8,650);
-      const passTime = durationFor(carry,receive,22,370);
-      const launch = Math.max(carryTime,runTime-passTime);
-      const arrival = at+launch+passTime;
-      move(i,carry,at,launch,'conduzione');
-      add(passes,startWithBall,carry,at,launch,'conduzione');
-      move(teamMate,receive,at,arrival-at,'smarcamento');
-      defenders.forEach((j,k) => defend(j,k ? receive : carry,at,arrival-at,k ? 2.5 : 0));
+    const inside = (depth,side) => limitPoint([
+      center[0]+nx*depth-ny*side,center[1]+ny*depth+nx*side
+    ]);
+    const dribble = (target,support = target) => {
+      const duration = durationFor(positions[shooter],target,8,460);
+      carryBall(shooter,target,at,duration);
+      defend(defenders,target,support,center,at,duration);
+      at += duration;
+    };
+    const exchange = (receiver,carry,lanes) => {
+      // Keep the first touch and the passing lane clear, then time the pass to meet the run.
+      const score = lane => opening(carry,lane,defenders)*4+distance(positions[receiver],lane)*.18;
+      const available = lanes.filter(lane => distance(carry,lane) >= 5);
+      const receive = (available.length ? available : lanes)
+        .reduce((best,lane) => score(lane) < score(best) ? lane : best);
+      const runnerFrom = positions[receiver];
+      const passTime = durationFor(carry,receive,22,420);
+      const launch = Math.max(durationFor(positions[shooter],carry,8,600),
+        durationFor(runnerFrom,receive,9,740)-passTime);
+      carryBall(shooter,carry,at,launch);
+      move(receiver,receive,at,launch+passTime,'smarcamento');
+      defend(defenders,carry,pointBetween(runnerFrom,receive,launch/(launch+passTime)),center,at,launch);
       add(passes,carry,receive,at+launch,passTime,'passaggio');
-      at = arrival;
-      shooter = teamMate;
+      defend(defenders,receive,carry,center,at+launch,passTime);
+      at += launch+passTime;
+      shooter = receiver;
+    };
+    if (teamMate >= 0) {
+      const left = inside(22,-9);
+      const right = inside(22,9);
+      const sign = opening(startWithBall,left,defenders) <= opening(startWithBall,right,defenders) ? -1 : 1;
+      const carry = inside(22,9*sign);
+      exchange(teamMate,carry,[inside(17,-10*sign),inside(23,-13*sign),inside(15,10*sign)]);
+      // The player who passed now attacks the space and receives the return ball.
+      const returnCarry = pointBetween(positions[shooter],inside(15,-8*sign),.36);
+      exchange(i,returnCarry,[inside(10,8*sign),inside(12,13*sign),inside(9,-10*sign)]);
+    } else if (defenders.length) {
+      const left = inside(16,-11);
+      const right = inside(16,11);
+      const cost = lane => opening(startWithBall,lane,defenders)*4+distance(startWithBall,lane)*.3;
+      dribble(cost(left) <= cost(right) ? left : right);
     }
-    const from = positions[shooter];
-    const travel = durationFor(from,shoot,8,460);
-    move(shooter,shoot,at,travel,'conduzione');
-    add(passes,from,shoot,at,travel,'conduzione');
-    defenders.forEach((j,k) => defend(j,shoot,at,travel,k ? 3 : 0));
+    dribble(shoot,teamMate >= 0 ? positions[teamMate] : shoot);
     const shotTime = durationFor(shoot,inGoal,29,300);
-    add(passes,shoot,inGoal,at+travel,shotTime,'tiro');
-    start = at+travel+shotTime+570;
+    add(passes,shoot,inGoal,at,shotTime,'tiro');
+    start = at+shotTime+570;
   });
   return {runners,passes,hiddenObjects,phases,duration:start};
 }
