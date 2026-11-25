@@ -235,7 +235,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label>Descrivi in quali porte si conclude ogni fase
           <textarea name="progression-text" rows="2" maxlength="400" aria-describedby="vut-progression-example"></textarea>
         </label>
-        <small id="vut-progression-example">Es. ${defaultProgressionText}</small>
+        <small id="vut-progression-example">Es. ${defaultProgressionText} Per dare una scelta, scrivi «porta 1 o porta 2» nella stessa fase.</small>
         <label>Il giocatore 3 si abbina al
           <select name="progression-team"><option value="2">Giocatore 2</option><option value="1">Giocatore 1</option></select>
         </label>
@@ -1352,7 +1352,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       case 'generate-progression': {
         const order = progressionGoalOrder(field('progression-text').value);
         if (!order) {
-          progressionStatus('Indica una porta da 1 a 4 per ciascuna fase. Usa l’esempio come modello.');
+          progressionStatus('Indica una porta o due alternative da 1 a 4 per ciascuna fase. Usa l’esempio come modello.');
           return;
         }
         stopPreview();
@@ -1722,8 +1722,10 @@ function assignRunPlayers(runs,players) {
 }
 
 function progressionGoalOrder(text) {
-  const goals = [...text.matchAll(/\bporta\s*(\d+)\b/gi)].map(match => Number(match[1])-1);
-  return goals.length === 4 && goals.every(goal => goal >= 0 && goal < 4) ? goals : null;
+  const matches = [...text.matchAll(/\bporta\s*(\d+)\b(?:\s+(?:o|oppure)\s+(?:porta\s*)?(\d+)\b)?/gi)];
+  const goals = matches.map(([,first,second]) =>
+    [...new Set(second ? [Number(first)-1,Number(second)-1] : [Number(first)-1])]);
+  return goals.length === 4 && goals.flat().every(goal => goal >= 0 && goal < 4) ? goals : null;
 }
 
 function progressionLayout(objects,progression) {
@@ -1744,9 +1746,7 @@ function progressionLayout(objects,progression) {
 
 function buildProgression(objects,{players,lines},{team,order}) {
   const membership = [0,1,team === 1 ? 0 : 1,team === 1 ? 1 : 0];
-  const colors = [playerBib(players[0]),playerBib(players[1])];
-  if (colors[0] === colors[1]) colors[1] = colors[0] === 'blue' ? 'red' : 'blue';
-  const runners = players.map((player,i) => ({player,bib:colors[membership[i]],steps:[]}));
+  const runners = players.map(player => ({player,bib:playerBib(player),steps:[]}));
   const positions = players.map(({x,y}) => [x,y]);
   const passes = [];
   const phases = [];
@@ -1771,15 +1771,25 @@ function buildProgression(objects,{players,lines},{team,order}) {
     move(i,limitPoint([x+dx/distance*travel,y+dy/distance*travel+offset]),start,duration,'difesa');
   };
   let start = 0;
-  order.forEach((goalIndex,i) => {
+  order.forEach((choices,i) => {
+    const startWithBall = positions[i];
+    const defenders = membership.slice(0,i).flatMap((group,j) => group !== membership[i] ? [j] : []);
+    const goals = Array.isArray(choices) ? choices : [choices];
+    const midpoint = ([a,b]) => [(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const cost = goal => {
+      const center = midpoint(lines[goal]);
+      const distance = Math.hypot(startWithBall[0]-center[0],startWithBall[1]-center[1]);
+      const congestion = defenders.reduce((total,index) =>
+        total+Math.max(0,10-segmentDistance(positions[index],startWithBall,center))*3,0);
+      return distance+congestion;
+    };
+    const goalIndex = goals.reduce((best,choice) => cost(choice) < cost(best) ? choice : best);
     const [a,b] = lines[goalIndex];
-    const center = [(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const center = midpoint(lines[goalIndex]);
     const lineLength = Math.hypot(b[0]-a[0],b[1]-a[1]);
     let nx = (b[1]-a[1])/lineLength;
     let ny = (a[0]-b[0])/lineLength;
     const teamMate = membership.slice(0,i).indexOf(membership[i]);
-    const defenders = membership.slice(0,i).flatMap((group,j) => group !== membership[i] ? [j] : []);
-    const startWithBall = positions[i];
     if ((startWithBall[0]-center[0])*nx+(startWithBall[1]-center[1])*ny < 0) {
       nx = -nx; ny = -ny;
     }
@@ -1788,7 +1798,7 @@ function buildProgression(objects,{players,lines},{team,order}) {
     }
     const shoot = limitPoint([center[0]+nx*8,center[1]+ny*8]);
     const inGoal = [center[0]-nx*1.7,center[1]-ny*1.7];
-    phases.push({start,label:progressionNames[i]});
+    phases.push({start,label:`${progressionNames[i]} · Porta ${goalIndex+1}`});
     let at = start;
     let shooter = i;
     if (teamMate >= 0) {
