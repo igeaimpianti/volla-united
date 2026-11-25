@@ -385,7 +385,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   function renderPreview(context,plan,elapsed) {
     context.clearRect(0,0,previewCanvas.width,previewCanvas.height);
     const unit = canvas.width/1500*viewport.zoom;
-    for (const {player,steps} of plan.runners) {
+    for (const {player,bib,steps} of plan.runners) {
       if (player && elapsed < steps[0].start) {
         const rotation = (player.rotation || 0)*Math.PI/180;
         const [x,y] = at(player.x,player.y);
@@ -409,7 +409,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       const [backX,backY] = at(...segment.a);
       const direction = Math.atan2(aheadY-backY,aheadX-backX);
       const stride = progress > 0 && progress < 1 ? Math.sin(distance*2) : 0;
-      drawFootballer(context,px,view3d ? py : py-rise*12*unit,unit*1.25,view3d,direction,playerBib(player),stride);
+      drawFootballer(context,px,view3d ? py : py-rise*12*unit,unit*1.25,view3d,direction,bib,stride);
     }
 
     if (plan.passes.length) {
@@ -1166,6 +1166,24 @@ function runStartPass(arrow,passCount) {
   return Number.isInteger(number) && number > 0 ? Math.min(number,passCount) : 0;
 }
 
+function assignRunPlayers(runs,players) {
+  const candidates = runs.flatMap((arrow,index) => {
+    const fromEarlierRun = runs.slice(0,index).some(({end}) => Math.hypot(end[0]-arrow.x,end[1]-arrow.y) < 2);
+    const radius = fromEarlierRun ? 2 : 12;
+    return players.map(player => ({arrow,player,distance:Math.hypot(player.x-arrow.x,player.y-arrow.y)}))
+      .filter(({distance}) => distance <= radius);
+  }).sort((a,b) => a.distance-b.distance);
+
+  const assignments = new Map();
+  const assignedPlayers = new Set();
+  for (const {arrow,player} of candidates) {
+    if (assignments.has(arrow) || assignedPlayers.has(player)) continue;
+    assignments.set(arrow,player);
+    assignedPlayers.add(player);
+  }
+  return assignments;
+}
+
 function previewPlan(objects) {
   const equipment = objects.filter(isCircuitEquipment);
   const runs = objects.filter(isRun);
@@ -1178,26 +1196,30 @@ function previewPlan(objects) {
   };
 
   const passArrows = objects.filter(isPass);
+  const assignments = assignRunPlayers(runs,available);
 
   for (const arrow of runs.length ? runs : [null]) {
     const route = previewRoute(equipment,arrow);
     if (!route) continue;
     const [x,y] = route.segments[0].a;
-    const candidates = [
-      ...available.filter(player => !hiddenObjects.has(player))
-        .map(player => ({player,distance:Math.hypot(player.x-x,player.y-y)})),
-      ...runners.map(runner => {
-        const [endX,endY] = runner.steps.at(-1).route.segments.at(-1).b;
-        return {runner,distance:Math.hypot(endX-x,endY-y)};
-      })
-    ];
-    // Join touching arrows, using nearby markers to identify individual runners.
-    const match = candidates.filter(candidate => !arrow || candidate.distance <= (candidate.runner ? 2 : 6))
-      .reduce((best,candidate) => candidate.distance < (best?.distance ?? Infinity) ? candidate : best,null);
-    let runner = match?.runner;
+    const player = arrow ? assignments.get(arrow) : available.reduce((nearest,candidate) => {
+      const distance = Math.hypot(candidate.x-x,candidate.y-y);
+      return !nearest || distance < Math.hypot(nearest.x-x,nearest.y-y) ? candidate : nearest;
+    },null);
+    let runner = null;
+    if (!player) {
+      let closest = 2;
+      for (const candidate of runners) {
+        const [endX,endY] = candidate.steps.at(-1).route.segments.at(-1).b;
+        const distance = Math.hypot(endX-x,endY-y);
+        if (distance < closest) {
+          closest = distance;
+          runner = candidate;
+        }
+      }
+    }
     if (!runner) {
-      const player = match?.player;
-      runner = {player,steps:[]};
+      runner = {player,bib:!player && available.length ? 'none' : playerBib(player),steps:[]};
       runners.push(runner);
       if (player) hiddenObjects.add(player);
     }
