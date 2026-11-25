@@ -110,8 +110,12 @@ const styles = `
 .vut input[type=date] {min-inline-size:0;-webkit-appearance:none;appearance:none}
 .vut input[type=date]::-webkit-date-and-time-value {text-align:left;min-height:20px}
 .vut-grid {display:grid;grid-template-columns:minmax(0,2fr) repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
-.vut-archive {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;margin-top:12px}
+.vut-archive {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;align-items:end;gap:8px;margin-top:12px}
 .vut-archive select {text-overflow:ellipsis}
+@media(max-width:540px) {
+  .vut-archive {grid-template-columns:minmax(0,1fr) auto}
+  .vut-archive label:first-child {grid-column:1/-1}
+}
 .vut small,.vut-meta {color:var(--muted);font-size:12px;font-weight:600}
 .vut-exercises {display:flex;overflow:auto;gap:6px;margin-top:8px;padding:2px 2px 5px}
 .vut-exercises button {flex:none;max-width:210px}
@@ -158,6 +162,23 @@ const styles = `
 @media(min-width:720px) {.vut-palette {grid-template-columns:repeat(12,minmax(0,1fr))}}
 </style>`;
 
+function archiveCategoryKey(name) {
+  return 'category:'+(name ?? '').trim().toLocaleLowerCase('it');
+}
+
+function archiveCategories(names,sessions) {
+  const categories = new Map();
+  for (const value of [...names,...sessions.map(row => row.category)]) {
+    const name = value?.trim();
+    if (name && !categories.has(archiveCategoryKey(name))) categories.set(archiveCategoryKey(name),name);
+  }
+  return [...categories.values()].sort((a,b) => a.localeCompare(b,'it',{numeric:true}));
+}
+
+function archiveSessions(sessions,category) {
+  return category ? sessions.filter(row => archiveCategoryKey(row.category) === category) : sessions;
+}
+
 export async function mountTraining(host, client, profile, categoryNames, onDirty) {
   if (!canUseTraining(profile)) return;
   host.innerHTML = styles + `
@@ -175,14 +196,14 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         </div>
       </div>
       <div class="vut-archive">
-        <label>Archivio sedute<select data-sessions><option value="">Nuova seduta</option></select></label>
+        <label>Categoria archivio<select data-archive-category><option value="">Tutte le categorie</option></select></label>
+        <label>Sedute salvate<select data-sessions><option value="">Scegli una seduta</option></select></label>
         ${iconButton('new','Nuova seduta','new')}
       </div>
       <div class="vut-grid">
-        <label>Titolo seduta<input name="title" maxlength="120" placeholder="Es. Coordinazione e conduzione"></label>
+        <label>Nome seduta<input name="title" maxlength="120" placeholder="Es. Coordinazione e conduzione"></label>
         <label>Data<input name="training_date" type="date"></label>
-        <label>Categoria<input name="category" maxlength="80" list="vut-categories" placeholder="Categoria"></label>
-        <datalist id="vut-categories">${categoryNames.map(name => `<option value="${escapeHtml(name)}"></option>`).join('')}</datalist>
+        <label>Categoria seduta<select name="category"><option value="">Scegli categoria</option></select></label>
       </div>
       <p class="vut-status" role="status" aria-live="polite"></p>
     </div>
@@ -283,6 +304,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   const action = name => find(`[data-action="${name}"]`);
   const field = name => find(`[name="${name}"]`);
   const list = find('[data-sessions]');
+  const archiveCategory = find('[data-archive-category]');
   const canvas = find('canvas');
   const status = find('[role=status]');
   const previewCanvas = find('[data-preview]');
@@ -323,17 +345,42 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (host.isConnected) onDirty(value);
   }
 
-  function updateArchive() {
-    list.replaceChildren(new Option('Nuova seduta', ''), ...sessions.map(row =>
-      new Option(`${row.training_date.split('-').reverse().join('/')} · ${row.title}`, row.id)));
-    list.value = sessions.some(row => row.id === session.id) ? session.id : '';
-    action('delete').disabled = busy || loadingArchive || !list.value;
-    action('copy').disabled = busy || loadingArchive || !list.value;
-    list.disabled = busy || loadingArchive;
+  function updateArchive(selectedCategory = archiveCategory.value) {
+    const categories = archiveCategories(categoryNames,sessions);
+    archiveCategory.replaceChildren(new Option('Tutte le categorie',''),
+      ...categories.map(name => new Option(name,archiveCategoryKey(name))));
+    if (sessions.some(row => !row.category?.trim())) {
+      archiveCategory.add(new Option('Senza categoria','category:'));
+    }
+    if ([...archiveCategory.options].some(option => option.value === selectedCategory)) {
+      archiveCategory.value = selectedCategory;
+    }
+
+    const rows = archiveSessions(sessions,archiveCategory.value);
+    list.replaceChildren(new Option(rows.length ? 'Scegli una seduta' : 'Nessuna seduta salvata',''),
+      ...rows.map(row => new Option(`${row.title} · ${row.training_date.split('-').reverse().join('/')}` +
+        (!archiveCategory.value && row.category?.trim() ? ` · ${row.category.trim()}` : ''),row.id)));
+    list.value = rows.some(row => row.id === session.id) ? session.id : '';
+    const saved = sessions.some(row => row.id === session.id);
+    action('delete').disabled = busy || loadingArchive || !saved;
+    action('copy').disabled = busy || loadingArchive || !saved;
+    archiveCategory.disabled = busy || loadingArchive;
+    list.disabled = busy || loadingArchive || !rows.length;
+    updateSessionCategories();
+  }
+
+  function updateSessionCategories() {
+    const categories = archiveCategories(categoryNames,[]);
+    const selected = session.category ?? '';
+    const category = field('category');
+    category.replaceChildren(new Option('Scegli categoria',''),
+      ...categories.map(name => new Option(name,name)));
+    if (selected && !categories.includes(selected)) category.add(new Option(selected,selected));
+    category.value = selected;
   }
 
   async function readSessions() {
-    const {data, error} = await client.from(table).select('id,title,training_date').order('training_date', {ascending:false}).order('updated_at', {ascending:false});
+    const {data, error} = await client.from(table).select('id,title,training_date,category').order('training_date', {ascending:false}).order('updated_at', {ascending:false});
     if (error) throw error;
     const entries = new Map(data.map(row => [row.id,row]));
     for (const row of sessions) entries.set(row.id,row);
@@ -343,7 +390,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   function changeSession(value) {
     session = value;
     markDirty(false);
-    for (const key of ['title', 'training_date', 'category']) field(key).value = session[key];
+    for (const key of ['title', 'training_date']) field(key).value = session[key];
     openExercise(0);
     updateArchive();
   }
@@ -1266,11 +1313,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     }
   }
 
+  archiveCategory.onchange = () => updateArchive();
+
   list.onchange = () => {
     const id = list.value;
     updateArchive();
     if (dirty && !confirm('Abbandonare le modifiche non salvate?')) return;
-    if (!id) return changeSession(newSession());
+    if (!id || id === session.id) return;
     void perform('Apertura seduta…', async () => {
       const {data, error} = await client.from(table).select('id,title,training_date,category,exercises').eq('id',id).single();
       if (error) throw error;
@@ -1398,7 +1447,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         break;
       case 'new':
         if (!dirty || confirm('Abbandonare le modifiche non salvate?')) {
-          changeSession(newSession());
+          const next = newSession();
+          const name = archiveCategory.selectedOptions[0]?.textContent;
+          if (archiveCategories(categoryNames,[]).includes(name)) next.category = name;
+          changeSession(next);
           status.textContent = '';
         }
         break;
@@ -1419,18 +1471,25 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         break;
       case 'save':
         if (!validSession()) return;
+        if (!session.category?.trim()) {
+          status.textContent = 'Scegli la categoria della seduta.';
+          field('category').focus();
+          return;
+        }
         void perform('Salvataggio…', async () => {
-          const {error} = await client.from(table).upsert({...session, title:session.title.trim(), updated_at:new Date().toISOString()}).select('id').single();
+          const {id,title,training_date,category} = session;
+          const row = {id,title:title.trim(),training_date,category:category.trim()};
+          const {error} = await client.from(table).upsert({...session,...row,updated_at:new Date().toISOString()}).select('id').single();
           if (error) throw error;
           markDirty(false);
-          sessions = [session, ...sessions.filter(row => row.id !== session.id)]
+          sessions = [row, ...sessions.filter(saved => saved.id !== id)]
             .sort((a,b) => b.training_date.localeCompare(a.training_date));
-          updateArchive();
+          updateArchive(archiveCategoryKey(row.category));
           status.textContent = 'Seduta salvata.';
         });
         break;
       case 'delete':
-        if (!list.value || !confirm('Eliminare definitivamente questa seduta?')) return;
+        if (!sessions.some(row => row.id === session.id) || !confirm('Eliminare definitivamente questa seduta?')) return;
         void perform('Eliminazione…', async () => {
           const {error} = await client.from(table).delete().eq('id',session.id).select('id').single();
           if (error) throw error;
