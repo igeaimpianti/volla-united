@@ -12,6 +12,8 @@ const bibs = {
 const isPlayer = object => object?.type === 'player' || object?.type === 'opponent';
 const defaultBib = type => type === 'opponent' ? 'blue' : 'red';
 const playerBib = object => Object.hasOwn(bibs,object?.bib ?? '') ? object.bib : defaultBib(object?.type);
+const runSpeeds = new Map([[0.65,'Lenta'],[1,'Normale'],[1.5,'Veloce'],[2,'Scatto']]);
+const runSpeed = arrow => runSpeeds.has(arrow?.speed) ? arrow.speed : 1;
 const heights = [15, 23, 30, 40, 50, 60];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[character]);
@@ -198,6 +200,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
           ${Object.entries(bibs).map(([value,[name]]) => `<option value="${value}">${name}</option>`).join('')}
         </select></label>
         <label data-run-start hidden>Partenza corsa <select name="run-start"></select></label>
+        <label data-run-speed hidden>Velocità corsa <select name="run-speed">
+          ${Array.from(runSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
+        </select></label>
         <label data-height hidden>Altezza <select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
         <div class="vut-controls">
           ${iconButton('object-left','Ruota elemento a sinistra','left')}
@@ -431,6 +436,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     find('[data-bib]').hidden = !bibTarget && !bibTool;
     field('bib').value = bibTarget ? playerBib(bibTarget) : bibPreferences[bibTool] ?? 'red';
     const runStart = field('run-start');
+    find('[data-run-speed]').hidden = !isRun(entry);
+    field('run-speed').value = String(runSpeed(entry));
     find('[data-run-start]').hidden = !isRun(entry);
     if (entry && isRun(entry)) {
       const passCount = objects.filter(isPass).length;
@@ -746,6 +753,19 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const afterPass = Number(field('run-start').value);
     if (afterPass) entry.afterPass = afterPass;
     else delete entry.afterPass;
+    markDirty();
+    paint();
+  };
+
+  field('run-speed').onchange = () => {
+    const entry = exercise().objects[selected];
+    if (!isRun(entry)) return;
+    const speed = Number(field('run-speed').value);
+    if (!runSpeeds.has(speed) || speed === runSpeed(entry)) return;
+    stopPreview();
+    snapshot();
+    if (speed === 1) delete entry.speed;
+    else entry.speed = speed;
     markDirty();
     paint();
   };
@@ -1182,7 +1202,7 @@ function previewPlan(objects) {
       if (player) hiddenObjects.add(player);
     }
     const afterPass = runStartPass(arrow,passArrows.length);
-    const duration = clamp(route.length*115,arrow ? 500 : 2800,18000);
+    const duration = clamp(route.length*115,arrow ? 500 : 2800,18000)/runSpeed(arrow);
     runner.steps.push({route,duration,afterPass,receipts:[]});
   }
 
@@ -1220,7 +1240,7 @@ function previewPlan(objects) {
       const {step,progress} = receipt;
       const last = step.receipts.at(-1);
       const travelTime = step.duration*(progress-(last?.progress ?? 0));
-      const earliest = (last?.time ?? step.start)+clamp(travelTime,1,250);
+      const earliest = (last?.time ?? step.start)+Math.max(travelTime,1);
       passStart = Math.max(start,earliest-duration);
       step.receipts.push({progress,time:passStart+duration});
     }
