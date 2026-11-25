@@ -197,6 +197,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-bib hidden>Casacca <select name="bib">
           ${Object.entries(bibs).map(([value,[name]]) => `<option value="${value}">${name}</option>`).join('')}
         </select></label>
+        <label data-run-start hidden>Partenza corsa <select name="run-start"></select></label>
         <label data-height hidden>Altezza <select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
         <div class="vut-controls">
           ${iconButton('object-left','Ruota elemento a sinistra','left')}
@@ -322,7 +323,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (tool === 'select' && entry && !entry.end && selectionRotation(entry) !== null) {
       grip = rotationGrip(entry);
     }
-    drawField(canvas,objects,view3d,angle,selected,routeStart,viewport,screenUnits(1),grip);
+    drawField(canvas,objects,view3d,angle,selected,routeStart,viewport,screenUnits(1),grip,playback?.hiddenObjects);
   }
 
   function queueBoard() {
@@ -335,10 +336,14 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
 
   function updatePreview() {
     const objects = exercise().objects;
-    const hasRun = objects.some(object => object.type === 'run' && object.end);
+    const hasPass = objects.some(isPass);
+    const hasRun = objects.some(isRun);
     const hasCircuit = objects.filter(isCircuitEquipment).length >= 2;
-    find('[data-preview-controls]').hidden = !(hasRun || hasCircuit);
-    find('[data-preview-mode]').textContent = hasRun ? 'Segue la freccia di corsa' : 'Segue l’ordine degli attrezzi';
+    find('[data-preview-controls]').hidden = !(hasPass || hasRun || hasCircuit);
+    find('[data-preview-mode]').textContent = [
+      hasPass && 'Passaggi in ordine numerico',
+      hasRun ? 'Corse lungo le frecce' : hasCircuit && 'Percorso tra gli attrezzi'
+    ].filter(Boolean).join(' · ');
   }
 
   function stopPreview() {
@@ -347,55 +352,66 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     playback = null;
     previewCanvas.hidden = true;
     action('preview').innerHTML = icon('play') + ' Anteprima esercizio';
+    queueBoard();
   }
 
   function startPreview() {
-    const objects = exercise().objects;
-    const route = previewRoute(objects,selected);
-    if (!route) return;
-    const duration = clamp(route.length*115,2800,18000);
+    const plan = previewPlan(exercise().objects);
+    if (!plan.duration) return;
     const context = previewCanvas.getContext('2d');
-    const [sx,sy] = route.segments[0].a;
-    const nearest = objects.filter(isPlayer).reduce((best,player) =>
-      !best || Math.hypot(player.x-sx,player.y-sy) < Math.hypot(best.x-sx,best.y-sy) ? player : best,null);
-    playback = {start:null,frame:null,player:nearest};
+    playback = {frame:null,hiddenObjects:plan.hiddenObjects};
+    context.clearRect(0,0,previewCanvas.width,previewCanvas.height);
     previewCanvas.hidden = false;
     action('preview').innerHTML = icon('stop') + ' Ferma anteprima';
+    queueBoard();
+
+    let start;
     function tick(time) {
       if (!playback || !canvas.isConnected) return stopPreview();
-      playback.start ??= time;
-      const progress = clamp((time-playback.start)/duration,0,1);
-      renderPreview(context,route,progress);
-      if (progress < 1) playback.frame = requestAnimationFrame(tick);
-      else stopPreview();
+      start ??= time;
+      const elapsed = time-start;
+      if (elapsed >= plan.duration+650) return stopPreview();
+      renderPreview(context,plan,elapsed);
+      playback.frame = requestAnimationFrame(tick);
     }
     playback.frame = requestAnimationFrame(tick);
   }
 
-  function renderPreview(context,route,progress) {
+  function renderPreview(context,plan,elapsed) {
     context.clearRect(0,0,previewCanvas.width,previewCanvas.height);
-    const distance = route.length*progress;
-    const step = route.segments.find(part => distance <= part.start+part.length) || route.segments.at(-1);
-    const fraction = clamp((distance-step.start)/step.length,0,1);
-    const x = step.a[0]+(step.b[0]-step.a[0])*fraction;
-    const y = step.a[1]+(step.b[1]-step.a[1])*fraction;
-    const rise = route.jumps.reduce((jump,d) => {
-      const phase = Math.abs(d-distance)/2.8;
-      return Math.max(jump,phase < 1 ? Math.cos(phase*Math.PI/2) : 0);
-    },0);
-    const [groundX,groundY] = at(x,y);
-    const [px,py] = at(x,y,view3d ? rise*6 : 0);
-    const unit = screenUnits(1);
-    const bob = view3d ? py : py-rise*12*unit;
-    context.beginPath();
-    context.ellipse(groundX,groundY+2*unit,9*unit,3*unit,0,0,Math.PI*2);
-    context.fillStyle = '#102218a0';
-    context.fill();
-    const [aheadX,aheadY] = at(step.b[0],step.b[1]);
-    const [backX,backY] = at(step.a[0],step.a[1]);
-    const direction = Math.atan2(aheadY-backY,aheadX-backX);
-    drawFootballer(context,px,bob,unit*.72,view3d,direction,playerBib(playback.player),Math.sin(distance*2));
+    const unit = canvas.width/1500*viewport.zoom;
+    for (const {player,steps} of plan.runners) {
+      if (player && elapsed < steps[0].start) {
+        const rotation = (player.rotation || 0)*Math.PI/180;
+        const [x,y] = at(player.x,player.y);
+        const [tx,ty] = at(player.x+Math.cos(rotation),player.y+Math.sin(rotation));
+        drawFootballer(context,x,y,unit*1.25,view3d,Math.atan2(ty-y,tx-x),playerBib(player));
+        continue;
+      }
+      const {step,progress} = trackPosition(steps,elapsed);
+      const {x,y,segment,distance} = pointAlongRoute(step.route,progress);
+      const rise = step.route.jumps.reduce((jump,d) => {
+        const phase = Math.abs(d-distance)/2.8;
+        return Math.max(jump,phase < 1 ? Math.cos(phase*Math.PI/2) : 0);
+      },0);
+      const [groundX,groundY] = at(x,y);
+      const [px,py] = at(x,y,view3d ? rise*6 : 0);
+      context.beginPath();
+      context.ellipse(groundX,groundY+2*unit,9*unit,3*unit,0,0,Math.PI*2);
+      context.fillStyle = '#102218a0';
+      context.fill();
+      const [aheadX,aheadY] = at(...segment.b);
+      const [backX,backY] = at(...segment.a);
+      const direction = Math.atan2(aheadY-backY,aheadX-backX);
+      const stride = progress > 0 && progress < 1 ? Math.sin(distance*2) : 0;
+      drawFootballer(context,px,view3d ? py : py-rise*12*unit,unit*1.25,view3d,direction,playerBib(player),stride);
+    }
 
+    if (plan.passes.length) {
+      const {step,progress} = trackPosition(plan.passes,elapsed);
+      const {x,y} = pointAlongRoute(step.route,progress);
+      drawBall(context,...at(x,y),unit);
+    }
   }
 
   function paint() {
@@ -414,6 +430,15 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const bibTool = isPlayer({type:tool}) ? tool : null;
     find('[data-bib]').hidden = !bibTarget && !bibTool;
     field('bib').value = bibTarget ? playerBib(bibTarget) : bibPreferences[bibTool] ?? 'red';
+    const runStart = field('run-start');
+    find('[data-run-start]').hidden = !isRun(entry);
+    if (entry && isRun(entry)) {
+      const passCount = objects.filter(isPass).length;
+      runStart.replaceChildren(new Option('Subito', '0'), ...Array.from({length:passCount},(_,index) =>
+        new Option(`Dopo il passaggio ${index+1}`, String(index+1))));
+      runStart.value = String(runStartPass(entry,passCount));
+      runStart.disabled = busy || !passCount;
+    }
     const height = field('height');
     find('[data-height]').hidden = entry?.type !== 'hurdle' && tool !== 'hurdle';
     if (entry?.type === 'hurdle') height.value = entry.height || 15;
@@ -551,7 +576,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       [entry.x,entry.y] = routeStart;
       entry.end = [x,y];
     } else if (tool === 'hurdle') {
-      entry.height = Number(field('height').value);
+      stopPreview();
+    entry.height = Number(field('height').value);
     } else if (isPlayer(entry)) {
       entry.bib = bibPreferences[tool];
     }
@@ -712,10 +738,23 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     paint();
   };
 
+  field('run-start').onchange = () => {
+    const entry = exercise().objects[selected];
+    if (!entry || !isRun(entry)) return;
+    stopPreview();
+    snapshot();
+    const afterPass = Number(field('run-start').value);
+    if (afterPass) entry.afterPass = afterPass;
+    else delete entry.afterPass;
+    markDirty();
+    paint();
+  };
+
   field('height').onchange = () => {
     const entry = exercise().objects[selected];
     if (entry?.type !== 'hurdle') return;
     snapshot();
+    stopPreview();
     entry.height = Number(field('height').value);
     markDirty();
     paint();
@@ -974,6 +1013,7 @@ function segmentDistance([x,y],[ax,ay],[bx,by]) {
 }
 
 const isPass = object => object.type === 'pass' && Boolean(object.end);
+const isRun = object => object?.type === 'run' && Boolean(object.end);
 
 function routeHandles({x,y,end,control}) {
   const middle = [(x+end[0])/2,(y+end[1])/2];
@@ -1040,11 +1080,7 @@ function isCircuitEquipment(object) {
   return ['disc','cone','hurdle','ladder','pole','goal'].includes(object.type);
 }
 
-function previewRoute(objects,selected) {
-  const runs = objects.filter(object => object.type === 'run' && object.end);
-  const active = objects[selected];
-  const run = runs.includes(active) ? active : runs[0];
-  const equipment = objects.filter(isCircuitEquipment);
+function previewRoute(equipment,run) {
   let points;
   if (run) {
     points = routePoints(run);
@@ -1071,6 +1107,10 @@ function previewRoute(objects,selected) {
     points = [extend(points[0],points[1]),...points,extend(points.at(-1),points.at(-2))];
   }
 
+  return routeFromPoints(points,equipment);
+}
+
+function routeFromPoints(points,equipment = []) {
   const segments = [];
   let length = 0;
   for (let i=1;i<points.length;i++) {
@@ -1099,6 +1139,100 @@ function previewRoute(objects,selected) {
     if (crossing !== null) jumps.push(crossing);
   }
   return {segments,length,jumps};
+}
+
+function runStartPass(arrow,passCount) {
+  const number = arrow?.afterPass;
+  return Number.isInteger(number) && number > 0 ? Math.min(number,passCount) : 0;
+}
+
+function previewPlan(objects) {
+  const equipment = objects.filter(isCircuitEquipment);
+  const runs = objects.filter(isRun);
+  const available = objects.filter(isPlayer);
+  const hiddenObjects = new Set();
+  const runners = [];
+  const passes = [];
+  const addStep = (steps,route,duration,start) => {
+    steps.push({route,start,duration,end:start+duration});
+  };
+
+  const passEndTimes = objects.filter(isPass).map(arrow => {
+    const route = routeFromPoints(routePoints(arrow));
+    const previous = passes.at(-1);
+    if (!route) return previous?.end ?? 0;
+    const start = previous ? previous.end+220 : 0;
+    addStep(passes,route,clamp(route.length*38,350,2800),start);
+    return passes.at(-1).end;
+  });
+
+  for (const arrow of runs.length ? runs : [null]) {
+    const route = previewRoute(equipment,arrow);
+    if (!route) continue;
+    const [x,y] = route.segments[0].a;
+    const candidates = [
+      ...available.filter(player => !hiddenObjects.has(player))
+        .map(player => ({player,distance:Math.hypot(player.x-x,player.y-y)})),
+      ...runners.map(runner => {
+        const [endX,endY] = runner.steps.at(-1).route.segments.at(-1).b;
+        return {runner,distance:Math.hypot(endX-x,endY-y)};
+      })
+    ];
+    // Join touching arrows, using nearby markers to identify individual runners.
+    const match = candidates.filter(candidate => !arrow || candidate.distance <= (candidate.runner ? 2 : 6))
+      .reduce((best,candidate) => candidate.distance < (best?.distance ?? Infinity) ? candidate : best,null);
+    let runner = match?.runner;
+    if (!runner) {
+      const player = match?.player;
+      runner = {player,steps:[]};
+      runners.push(runner);
+      if (player) hiddenObjects.add(player);
+    }
+    const afterPass = runStartPass(arrow,passEndTimes.length);
+    const start = Math.max(runner.steps.at(-1)?.end ?? 0,passEndTimes[afterPass-1] ?? 0);
+    addStep(runner.steps,route,clamp(route.length*115,arrow ? 500 : 2800,18000),start);
+  }
+
+  if (passes.length) {
+    const [x,y] = passes[0].route.segments[0].a;
+    const ball = objects.filter(object => object.type === 'ball').reduce((best,object) => {
+      const distance = Math.hypot(object.x-x,object.y-y);
+      return distance < (best?.distance ?? 6) ? {object,distance} : best;
+    },null);
+    if (ball) hiddenObjects.add(ball.object);
+  }
+  const duration = Math.max(0,passes.at(-1)?.end ?? 0,...runners.map(({steps}) => steps.at(-1).end));
+  return {runners,passes,hiddenObjects,duration};
+}
+
+function trackPosition(steps,elapsed) {
+  const next = steps.findIndex(step => elapsed <= step.end);
+  const step = next < 0 ? steps.at(-1) : steps[next];
+  if (next > 0 && elapsed < step.start) return {step:steps[next-1],progress:1};
+  return {step,progress:clamp((elapsed-step.start)/step.duration,0,1)};
+}
+
+function pointAlongRoute(route,progress) {
+  const distance = route.length*progress;
+  const segment = route.segments.find(part => distance <= part.start+part.length) || route.segments.at(-1);
+  const fraction = clamp((distance-segment.start)/segment.length,0,1);
+  const {a,b} = segment;
+  return {
+    x:a[0]+(b[0]-a[0])*fraction,
+    y:a[1]+(b[1]-a[1])*fraction,
+    distance,segment
+  };
+}
+
+function drawBall(ctx,x,y,scale = 1) {
+  ctx.beginPath();
+  ctx.arc(x,y,11*scale,0,2*Math.PI);
+  ctx.fillStyle = '#fafafa';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x,y,4*scale,0,2*Math.PI);
+  ctx.fillStyle = '#252932';
+  ctx.fill();
 }
 
 function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0) {
@@ -1168,7 +1302,7 @@ function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0) {
   ctx.restore();
 }
 
-function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null) {
+function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null, hiddenObjects) {
   const ctx = canvas.getContext('2d');
   const {width:w,height:h} = canvas;
   const cos = Math.cos(angle);
@@ -1261,7 +1395,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     }
   });
 
-  const props = objects.map((entry,index) => ({entry,index})).filter(({entry}) => !entry.end);
+  const props = objects.map((entry,index) => ({entry,index})).filter(({entry}) => !entry.end && !hiddenObjects?.has(entry));
   if (perspective) props.sort((a,b) =>
     (a.entry.x-b.entry.x)*sin+(a.entry.y-b.entry.y)*cos);
   for (const {entry,index} of props) {
@@ -1315,14 +1449,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
       drawFootballer(ctx,px,py,w/1500*1.25,perspective,Math.atan2(ty-py,tx-px),playerBib(entry));
     } else if (type === 'ball') {
       const [px,py] = project(x,y);
-      ctx.beginPath();
-      ctx.arc(px,py,11,0,2*Math.PI);
-      ctx.fillStyle = '#fafafa';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(px,py,4,0,2*Math.PI);
-      ctx.fillStyle = '#252932';
-      ctx.fill();
+      drawBall(ctx,px,py);
     }
   }
   const badgeUnit = Math.max(units,2.6)/viewport.zoom;
