@@ -29,7 +29,7 @@ const defaultBib = type => type === 'opponent' ? 'blue' : 'red';
 const playerBib = object => Object.hasOwn(bibs,object?.bib ?? '') ? object.bib : defaultBib(object?.type);
 const runSpeeds = new Map([[0.65,'Lenta'],[1,'Normale'],[1.5,'Veloce'],[2,'Scatto']]);
 const pressureSpeeds = new Map([[0.65,'Lenta'],[1,'Normale'],[1.5,'Veloce']]);
-const isPressing = object => object?.type === 'opponent' && pressureSpeeds.has(object.pressureSpeed);
+const isPressing = object => isPlayer(object) && pressureSpeeds.has(object.pressureSpeed);
 const passSpeeds = new Map([[0.65,'Lento'],[1,'Normale'],[1.5,'Veloce'],[2,'Molto veloce']]);
 const arrowSpeed = (arrow,speeds) => speeds.has(arrow?.speed) ? arrow.speed : 1;
 const heights = [15, 23, 30, 40, 50, 60];
@@ -234,6 +234,12 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-bib hidden>Casacca <select name="bib">
           ${Object.entries(bibs).map(([value,[name]]) => `<option value="${value}">${name}</option>`).join('')}
         </select></label>
+        <label data-player-number hidden>Numero calciatore <input name="player-number" type="number" min="1" max="99" inputmode="numeric"></label>
+        <label data-actor hidden>Calciatore dell’azione <select name="actor"></select></label>
+        <div class="vut-controls" data-sequence hidden>
+          <button type="button" data-action="action-earlier">Sposta prima</button>
+          <button type="button" data-action="action-later">Sposta dopo</button>
+        </div>
         <label data-run-start hidden>Partenza corsa <select name="run-start"></select></label>
         <label data-run-speed hidden>Velocità corsa <select name="run-speed">
           ${Array.from(runSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
@@ -241,10 +247,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-pass-speed hidden><span data-ball-speed-label>Velocità passaggio</span> <select name="pass-speed">
           ${Array.from(passSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
-        <label data-pressure-speed hidden>Pressione verso la palla <select name="pressure-speed">
+        <label data-pressure-speed hidden>Pressing <select name="pressure-speed">
           <option value="0">Disattivata</option>
           ${Array.from(pressureSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
+        <label data-pressure-target hidden>Bersaglio del pressing <select name="pressure-target"></select></label>
         <label data-pressure-start hidden>Partenza pressione <select name="pressure-start">
           <option value="departure">Alla partenza del passaggio</option>
           <option value="arrival">Alla ricezione</option>
@@ -408,10 +415,12 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const hasPass = objects.some(isPass);
     const hasRun = objects.some(isRun);
     const hasCircuit = objects.filter(isCircuitEquipment).length >= 2;
-    find('[data-preview-controls]').hidden = !(hasPass || hasRun || hasCircuit);
+    const hasPressing = objects.some(player => isPressing(player) && (hasPass ||
+      objects.some(target => isPlayer(target) && !isPressing(target) && target.id && target.id === player.pressureTargetId)));
+    find('[data-preview-controls]').hidden = !(hasPass || hasRun || hasCircuit || hasPressing);
     find('[data-preview-mode]').textContent = [
       hasPass && 'Azioni con palla in ordine numerico',
-      hasPass && objects.some(isPressing) && 'Pressione verso la palla',
+      hasPressing && 'Pressing',
       hasRun ? 'Corse lungo le frecce' : hasCircuit && 'Percorso tra gli attrezzi'
     ].filter(Boolean).join(' · ');
   }
@@ -460,7 +469,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         const rotation = (player.rotation || 0)*Math.PI/180;
         const [x,y] = at(player.x,player.y);
         const [tx,ty] = at(player.x+Math.cos(rotation),player.y+Math.sin(rotation));
-        drawFootballer(context,x,y,unit*1.25,view3d,Math.atan2(ty-y,tx-x),bib);
+        drawFootballer(context,x,y,unit*1.25,view3d,Math.atan2(ty-y,tx-x),bib,0,player.number);
         continue;
       }
       const {step,progress} = runnerPosition(steps,elapsed);
@@ -479,7 +488,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       const [backX,backY] = at(...segment.a);
       const direction = Math.atan2(aheadY-backY,aheadX-backX);
       const stride = progress > 0 && progress < 1 ? Math.sin(distance*2) : 0;
-      drawFootballer(context,px,view3d ? py : py-rise*12*unit,unit*1.25,view3d,direction,bib,stride);
+      drawFootballer(context,px,view3d ? py : py-rise*12*unit,unit*1.25,view3d,direction,bib,stride,player?.number);
     }
 
     if (plan.passes.length) {
@@ -605,9 +614,20 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const bibTool = isPlayer({type:tool}) ? tool : null;
     find('[data-bib]').hidden = !bibTarget && !bibTool;
     field('bib').value = bibTarget ? playerBib(bibTarget) : bibPreferences[bibTool] ?? 'red';
-    find('[data-pressure-speed]').hidden = entry?.type !== 'opponent';
+    find('[data-player-number]').hidden = !isPlayer(entry);
+    field('player-number').value = entry?.number ?? '';
+    const actionIndexes = objects.flatMap((object,i) => object.end ? [i] : []);
+    const sequenceIndex = actionIndexes.indexOf(selected);
+    find('[data-sequence]').hidden = sequenceIndex < 0;
+    action('action-earlier').disabled = busy || sequenceIndex <= 0;
+    action('action-later').disabled = busy || sequenceIndex < 0 || sequenceIndex === actionIndexes.length-1;
+    find('[data-actor]').hidden = !entry?.end;
+    if (entry?.end) showPlayerOptions('actor','Automatico',entry.actorId);
+    find('[data-pressure-speed]').hidden = !isPlayer(entry);
+    find('[data-pressure-target]').hidden = !isPressing(entry);
+    if (isPressing(entry)) showPlayerOptions('pressure-target','Palla',entry.pressureTargetId,entry);
     field('pressure-speed').value = String(isPressing(entry) ? entry.pressureSpeed : 0);
-    find('[data-pressure-start]').hidden = !isPressing(entry);
+    find('[data-pressure-start]').hidden = !isPressing(entry) || Boolean(entry.pressureTargetId);
     field('pressure-start').value = entry?.pressureStart === 'arrival' ? 'arrival' : 'departure';
     const runStart = field('run-start');
     find('[data-run-speed]').hidden = !isRun(entry);
@@ -617,10 +637,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     field('pass-speed').value = String(arrowSpeed(entry,passSpeeds));
     find('[data-run-start]').hidden = !isRun(entry);
     if (entry && isRun(entry)) {
-      const passCount = objects.filter(isPass).length;
-      runStart.replaceChildren(new Option('Subito', '0'), ...Array.from({length:passCount},(_,index) =>
-        new Option(`Dopo l’azione ${index+1}`, String(index+1))));
-      runStart.value = String(runStartPass(entry,passCount));
+      const ballActions = objects.filter(isPass);
+      const passCount = ballActions.length;
+      runStart.replaceChildren(new Option(entry.actorId ? 'In sequenza' : 'Subito', ''),new Option('Subito', '0'), ...Array.from({length:passCount},(_,index) =>
+        new Option(`Dopo ${equipment[ballActions[index].type]} ${index+1}`, String(index+1))));
+      runStart.value = entry.afterPass == null && entry.actorId ? '' : String(runStartPass(entry,passCount));
       runStart.disabled = busy || !passCount;
     }
     const height = field('height');
@@ -628,9 +649,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (entry?.type === 'hurdle') height.value = entry.height || 15;
     find('[data-rotation]').hidden = rotation === null;
     if (document.activeElement !== field('rotation')) field('rotation').value = rotation ?? '';
-    const passNumber = isPass(entry) ? objects.slice(0,selected+1).filter(isPass).length : null;
     find('[data-selection]').textContent = entry
-      ? equipment[entry.type] + (passNumber ? ' ' + passNumber : '') + ' selezionato'
+      ? equipment[entry.type] + (entry.number ? ' ' + entry.number : '') + (sequenceIndex >= 0 ? ' · Sequenza ' + (sequenceIndex+1) : '')
       : 'Nessun elemento selezionato';
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
       : tool === 'zone' ? (zoneShape.value === 'free'
@@ -1058,13 +1078,56 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     paint();
   };
 
+  function showPlayerOptions(name,empty,value,excluded) {
+    const choices = exercise().objects.flatMap((player,index) => {
+      if (!isPlayer(player) || player === excluded) return [];
+      const num = player.number ? `N. ${player.number}` : `Giocatore ${exercise().objects.slice(0,index+1).filter(isPlayer).length}`;
+      return [new Option(`${num} · ${bibs[playerBib(player)][0]}`,String(index))];
+    });
+    const input = field(name);
+    input.replaceChildren(new Option(empty,''),...choices);
+    const index = value ? exercise().objects.findIndex(object => object.id === value) : -1;
+    input.value = index < 0 ? '' : String(index);
+  }
+
+  field('player-number').onchange = () => {
+    const player = exercise().objects[selected];
+    if (!isPlayer(player)) return;
+    const number = field('player-number').valueAsNumber;
+    if (!Number.isNaN(number) && (!Number.isInteger(number) || number < 1 || number > 99)) return paint();
+    stopPreview();
+    snapshot();
+    if (Number.isNaN(number)) delete player.number;
+    else player.number = number;
+    markDirty();
+    paint();
+  };
+
+  for (const [name,key] of [['actor','actorId'],['pressure-target','pressureTargetId']]) {
+    field(name).onchange = () => {
+      const objects = exercise().objects;
+      const entry = objects[selected];
+      if (!entry) return;
+      const index = field(name).value;
+      stopPreview();
+      snapshot();
+      if (index === '') delete entry[key];
+      else {
+        const player = objects[Number(index)];
+        entry[key] = player.id ??= crypto.randomUUID();
+      }
+      markDirty();
+      paint();
+    };
+  }
+
   field('run-start').onchange = () => {
     const entry = exercise().objects[selected];
     if (!entry || !isRun(entry)) return;
     stopPreview();
     snapshot();
     const afterPass = Number(field('run-start').value);
-    if (afterPass) entry.afterPass = afterPass;
+    if (field('run-start').value !== '') entry.afterPass = afterPass;
     else delete entry.afterPass;
     markDirty();
     paint();
@@ -1091,7 +1154,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   for (const name of ['pressure-speed','pressure-start']) {
     field(name).onchange = () => {
       const entry = exercise().objects[selected];
-      if (entry?.type !== 'opponent') return;
+      if (!isPlayer(entry)) return;
       stopPreview();
       snapshot();
       if (name === 'pressure-speed') {
@@ -1221,6 +1284,29 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.closest('.vut-menu')) button.closest('details').open = false;
     if (['remove-object','rotate-object','object-left','undo'].includes(button.dataset.action)) stopPreview();
     switch (button.dataset.action) {
+      case 'action-earlier':
+      case 'action-later': {
+        const objects = exercise().objects;
+        const entry = objects[selected];
+        const direction = button.dataset.action === 'action-earlier' ? -1 : 1;
+        const indexes = objects.flatMap((object,i) => object.end ? [i] : []);
+        const other = indexes[indexes.indexOf(selected)+direction];
+        if (!entry?.end || other == null) return;
+        stopPreview();
+        snapshot();
+        const oldActions = objects.filter(isPass);
+        [objects[selected],objects[other]] = [objects[other],objects[selected]];
+        const ordered = objects.filter(isPass);
+        for (const run of objects.filter(isRun)) {
+          if (run.afterPass > 0 && oldActions[run.afterPass-1]) {
+            run.afterPass = ordered.indexOf(oldActions[run.afterPass-1])+1;
+          }
+        }
+        selected = other;
+        markDirty();
+        paint();
+        break;
+      }
       case 'video-arrows':
       case 'video-clean':
         if (!exporting) void exportAnimation(button.dataset.action === 'video-arrows');
@@ -1761,17 +1847,18 @@ function previewPlan(objects) {
   };
 
   const passArrows = objects.filter(isPass);
-  const assignments = assignRunPlayers(runs,available);
+  const actors = new Map(available.filter(player => player.id).map(player => [player.id,player]));
+  const assignments = assignRunPlayers(runs.filter(arrow => !actors.has(arrow.actorId)),available);
 
   for (const arrow of runs.length || passArrows.some(arrow => arrow.type === "dribble") ? runs : [null]) {
     const route = previewRoute(equipment,arrow);
     if (!route) continue;
     const [x,y] = route.segments[0].a;
-    const player = arrow ? assignments.get(arrow) : available.reduce((nearest,candidate) => {
+    const player = arrow ? actors.get(arrow.actorId) ?? assignments.get(arrow) : available.reduce((nearest,candidate) => {
       const distance = Math.hypot(candidate.x-x,candidate.y-y);
       return !nearest || distance < Math.hypot(nearest.x-x,nearest.y-y) ? candidate : nearest;
     },null);
-    let runner = null;
+    let runner = player ? runners.find(runner => runner.player === player) : null;
     if (!player) {
       let closest = 2;
       for (const candidate of runners) {
@@ -1788,9 +1875,11 @@ function previewPlan(objects) {
       runners.push(runner);
       if (player) hiddenObjects.add(player);
     }
-    const afterPass = runStartPass(arrow,passArrows.length);
+    const afterPass = arrow?.afterPass == null && actors.has(arrow?.actorId)
+      ? objects.slice(0,objects.indexOf(arrow)).filter(isPass).length
+      : runStartPass(arrow,passArrows.length);
     const duration = clamp(route.length*115,arrow ? 500 : 2800,18000)/arrowSpeed(arrow,runSpeeds);
-    runner.steps.push({route,duration,afterPass,receipts:[]});
+    runner.steps.push({route,duration,afterPass,arrow,receipts:[]});
   }
 
   const arrivalTimes = [];
@@ -1810,7 +1899,10 @@ function previewPlan(objects) {
   passArrows.forEach((arrow,index) => {
     const points = routePoints(arrow);
     const previous = passes.at(-1);
-    const start = previous ? previous.end+220 : 0;
+    const actor = actors.get(arrow.actorId);
+    const earlierRun = actor && runners.find(runner => runner.player === actor)?.steps.findLast(step =>
+      step.afterPass <= index && objects.indexOf(step.arrow) < objects.indexOf(arrow));
+    const start = Math.max(previous ? previous.end+220 : 0,earlierRun?.end ?? 0);
     const match = runs.length && arrow.type === 'pass' ? findReceipt(runners,arrow.end,index+1) : null;
     const snappedRoute = match && routeFromPoints([...points.slice(0,-1),match.point]);
     const receipt = snappedRoute ? match : null;
@@ -1833,7 +1925,7 @@ function previewPlan(objects) {
       step.receipts.push({progress,time:passStart+duration});
     }
     addStep(passes,route,duration,passStart);
-    if (arrow.type === 'dribble') passes.at(-1).kind = 'conduzione';
+    Object.assign(passes.at(-1),{actor,kind:arrow.type === 'dribble' ? 'conduzione' : arrow.type === 'shot' ? 'tiro' : 'passaggio'});
     arrivalTimes.push(passStart+duration);
     scheduleRuns();
   });
@@ -1852,13 +1944,28 @@ function previewPlan(objects) {
     for (const player of available.filter(player => !hiddenObjects.has(player))) {
       candidates.push({player,distance:near([player.x,player.y])});
     }
-    const best = candidates.filter(candidate => candidate.distance <= 7)
+    const assigned = step.actor && (candidates.find(candidate =>
+      (candidate.player ?? candidate.runner?.player) === step.actor));
+    const best = step.actor ? assigned : candidates.filter(candidate => candidate.distance <= 7)
       .sort((a,b) => a.distance-b.distance)[0];
+    if (assigned) {
+      const origin = assigned.runner ? playerPosition(assigned.runner,step.start) : [step.actor.x,step.actor.y];
+      const route = routeFromPoints([origin,...step.route.segments.map(segment => segment.b)]);
+      if (route) step.route = route;
+    }
     const runner = best?.runner ?? {player:best?.player,bib:best?.player ? playerBib(best.player) : 'none',steps:[]};
     if (!best?.runner) runners.push(runner);
     if (runner.player) hiddenObjects.add(runner.player);
     runner.steps.push({...step,receipts:[]});
     runner.steps.sort((a,b) => a.start-b.start);
+  }
+
+  for (const step of passes.filter(step => step.kind === 'tiro' && step.actor)) {
+    const runner = runners.find(runner => runner.player === step.actor);
+    const origin = runner ? playerPosition(runner,step.start) : [step.actor.x,step.actor.y];
+    const points = step.route.segments.map(segment => segment.b);
+    const route = routeFromPoints([origin,...points]);
+    if (route) step.route = route;
   }
 
   if (passes.length) {
@@ -1870,7 +1977,11 @@ function previewPlan(objects) {
     if (ball) hiddenObjects.add(ball.object);
   }
   for (const opponent of objects.filter(isPressing)) {
-    const steps = pressureSteps(opponent,passes);
+    const target = available.find(player => player.id && player.id === opponent.pressureTargetId);
+    const targetRunner = target && runners.find(runner => runner.player === target);
+    const chase = target ? [{start:0,end:0,target:[target.x,target.y]},
+      ...(targetRunner?.steps ?? []).map(step => ({...step,target:step.route.segments.at(-1).b}))] : passes;
+    const steps = pressureSteps(opponent,chase,target ? 'start' : undefined);
     if (!steps.length) continue;
     runners.push({player:opponent,bib:playerBib(opponent),steps});
     hiddenObjects.add(opponent);
@@ -1880,16 +1991,22 @@ function previewPlan(objects) {
   return {runners,passes,hiddenObjects,duration};
 }
 
-function pressureSteps(opponent,passes) {
+function playerPosition(runner,elapsed) {
+  if (elapsed < runner.steps[0].start) return [runner.player.x,runner.player.y];
+  const {step,progress} = runnerPosition(runner.steps,elapsed);
+  const {x,y} = pointAlongRoute(step.route,progress);
+  return [x,y];
+}
+
+function pressureSteps(opponent,passes,trigger = opponent.pressureStart === 'arrival' ? 'end' : 'start') {
   const steps = [];
-  const trigger = opponent.pressureStart === 'arrival' ? 'end' : 'start';
   const millisecondsPerUnit = 115/opponent.pressureSpeed;
   const standOff = 3;
   let position = [opponent.x,opponent.y];
   passes.forEach((pass,index) => {
     const start = pass[trigger];
     const next = passes[index+1]?.[trigger] ?? Infinity;
-    const [x,y] = pass.route.segments.at(-1).b;
+    const [x,y] = pass.target ?? pass.route.segments.at(-1).b;
     const dx = x-position[0];
     const dy = y-position[1];
     const distance = Math.hypot(dx,dy);
@@ -1978,7 +2095,7 @@ function drawBall(ctx,x,y,scale = 1) {
   ctx.fill();
 }
 
-function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0) {
+function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0,number) {
   const [,color] = bibs[bib] || bibs.red;
   const kit = '#222937';
   const skin = '#d9a47d';
@@ -2043,6 +2160,18 @@ function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0) {
     head(0,-11,3.7,skin);
   }
   ctx.restore();
+  if (number) {
+    ctx.save();
+    ctx.font = `bold ${16*scale}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 4*scale;
+    ctx.strokeStyle = '#102218';
+    ctx.fillStyle = '#fff';
+    const labelY = y-(perspective ? 53 : 22)*scale;
+    ctx.strokeText(number,x,labelY);
+    ctx.fillText(number,x,labelY);
+    ctx.restore();
+  }
 }
 
 function snapDisc([x,y],objects,omitted,project,tolerance) {
@@ -2310,7 +2439,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     } else if (isPlayer(entry)) {
       const [px,py] = project(x,y);
       const [tx,ty] = project(x+Math.cos(rotation),y+Math.sin(rotation));
-      drawFootballer(ctx,px,py,w/1500*1.25,perspective,Math.atan2(ty-py,tx-px),playerBib(entry));
+      drawFootballer(ctx,px,py,w/1500*1.25,perspective,Math.atan2(ty-py,tx-px),playerBib(entry),0,entry.number);
     } else if (type === 'ball') {
       const [px,py] = project(x,y);
       drawBall(ctx,px,py);
