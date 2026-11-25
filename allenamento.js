@@ -13,7 +13,8 @@ const isPlayer = object => object?.type === 'player' || object?.type === 'oppone
 const defaultBib = type => type === 'opponent' ? 'blue' : 'red';
 const playerBib = object => Object.hasOwn(bibs,object?.bib ?? '') ? object.bib : defaultBib(object?.type);
 const runSpeeds = new Map([[0.65,'Lenta'],[1,'Normale'],[1.5,'Veloce'],[2,'Scatto']]);
-const runSpeed = arrow => runSpeeds.has(arrow?.speed) ? arrow.speed : 1;
+const passSpeeds = new Map([[0.65,'Lento'],[1,'Normale'],[1.5,'Veloce'],[2,'Molto veloce']]);
+const arrowSpeed = (arrow,speeds) => speeds.has(arrow?.speed) ? arrow.speed : 1;
 const heights = [15, 23, 30, 40, 50, 60];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[character]);
@@ -210,6 +211,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-run-start hidden>Partenza corsa <select name="run-start"></select></label>
         <label data-run-speed hidden>Velocità corsa <select name="run-speed">
           ${Array.from(runSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
+        </select></label>
+        <label data-pass-speed hidden>Velocità passaggio <select name="pass-speed">
+          ${Array.from(passSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
         <label data-height hidden>Altezza <select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
         <div class="vut-controls">
@@ -518,7 +522,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     field('bib').value = bibTarget ? playerBib(bibTarget) : bibPreferences[bibTool] ?? 'red';
     const runStart = field('run-start');
     find('[data-run-speed]').hidden = !isRun(entry);
-    field('run-speed').value = String(runSpeed(entry));
+    field('run-speed').value = String(arrowSpeed(entry,runSpeeds));
+    find('[data-pass-speed]').hidden = !isPass(entry);
+    field('pass-speed').value = String(arrowSpeed(entry,passSpeeds));
     find('[data-run-start]').hidden = !isRun(entry);
     if (entry && isRun(entry)) {
       const passCount = objects.filter(isPass).length;
@@ -838,18 +844,23 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     paint();
   };
 
-  field('run-speed').onchange = () => {
-    const entry = exercise().objects[selected];
-    if (!isRun(entry)) return;
-    const speed = Number(field('run-speed').value);
-    if (!runSpeeds.has(speed) || speed === runSpeed(entry)) return;
-    stopPreview();
-    snapshot();
-    if (speed === 1) delete entry.speed;
-    else entry.speed = speed;
-    markDirty();
-    paint();
-  };
+  for (const [name,matches,speeds] of [
+    ['run-speed',isRun,runSpeeds],
+    ['pass-speed',isPass,passSpeeds]
+  ]) {
+    field(name).onchange = () => {
+      const entry = exercise().objects[selected];
+      if (!matches(entry)) return;
+      const speed = Number(field(name).value);
+      if (!speeds.has(speed) || speed === arrowSpeed(entry,speeds)) return;
+      stopPreview();
+      snapshot();
+      if (speed === 1) delete entry.speed;
+      else entry.speed = speed;
+      markDirty();
+      paint();
+    };
+  }
 
   field('height').onchange = () => {
     const entry = exercise().objects[selected];
@@ -1151,7 +1162,7 @@ function recordTrainingVideo(recorder,duration,draw) {
   });
 }
 
-const isPass = object => object.type === 'pass' && Boolean(object.end);
+const isPass = object => object?.type === 'pass' && Boolean(object.end);
 const isRun = object => object?.type === 'run' && Boolean(object.end);
 
 function routeHandles({x,y,end,control}) {
@@ -1343,7 +1354,7 @@ function previewPlan(objects) {
       if (player) hiddenObjects.add(player);
     }
     const afterPass = runStartPass(arrow,passArrows.length);
-    const duration = clamp(route.length*115,arrow ? 500 : 2800,18000)/runSpeed(arrow);
+    const duration = clamp(route.length*115,arrow ? 500 : 2800,18000)/arrowSpeed(arrow,runSpeeds);
     runner.steps.push({route,duration,afterPass,receipts:[]});
   }
 
@@ -1375,7 +1386,7 @@ function previewPlan(objects) {
       return;
     }
 
-    const duration = clamp(route.length*38,350,2800);
+    const duration = clamp(route.length*38,350,2800)/arrowSpeed(arrow,passSpeeds);
     let passStart = start;
     if (receipt) {
       const {step,progress} = receipt;
