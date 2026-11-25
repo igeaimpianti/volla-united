@@ -255,7 +255,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
           ${Array.from(pressureSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
         <label data-pressure-target hidden>Bersaglio del pressing <select name="pressure-target"></select></label>
-        <label data-pressure-start hidden>Partenza pressione <select name="pressure-start">
+        <label data-pressure-after hidden>Inizia il pressing <select name="pressure-after"></select></label>
+        <label data-pressure-start hidden>Reazione al passaggio <select name="pressure-start">
           <option value="departure">Alla partenza del passaggio</option>
           <option value="arrival">Alla ricezione</option>
         </select></label>
@@ -630,6 +631,20 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     find('[data-pressure-speed]').hidden = !isPlayer(entry);
     find('[data-pressure-target]').hidden = !isPressing(entry);
     action('test-pressing').hidden = !isPressing(entry);
+    find('[data-pressure-after]').hidden = !isPressing(entry);
+    if (isPressing(entry)) {
+      const choices = [];
+      let ballNumber = 0;
+      let runNumber = 0;
+      objects.forEach((object,index) => {
+        if (isPass(object)) choices.push(new Option(`Dopo ${equipment[object.type]} ${++ballNumber}`,String(index)));
+        else if (isRun(object)) choices.push(new Option(`Dopo corsa ${++runNumber}`,String(index)));
+      });
+      const after = field('pressure-after');
+      after.replaceChildren(new Option('Subito',''),...choices);
+      const trigger = pressingTrigger(entry,objects);
+      after.value = trigger ? String(objects.indexOf(trigger)) : '';
+    }
     const pressingStatus = find('[data-pressing-status]');
     pressingStatus.hidden = true;
     pressingStatus.textContent = '';
@@ -1177,6 +1192,23 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       paint();
     };
   }
+
+  field('pressure-after').onchange = () => {
+    const objects = exercise().objects;
+    const entry = objects[selected];
+    if (!isPressing(entry)) return;
+    const value = field('pressure-after').value;
+    stopPreview();
+    snapshot();
+    if (value === '') delete entry.pressureAfterId;
+    else {
+      const trigger = objects[Number(value)];
+      entry.pressureAfterId = trigger.id ??= crypto.randomUUID();
+    }
+    clearVideo();
+    markDirty();
+    paint();
+  };
 
   for (const name of ['pressure-speed','pressure-start']) {
     field(name).onchange = () => {
@@ -1887,7 +1919,7 @@ function drawProgressionArrows(context,plan,elapsed,at,unit) {
 function previewPlan(objects) {
   const equipment = objects.filter(isCircuitEquipment);
   const runs = objects.filter(isRun);
-  const available = objects.filter(object => isPlayer(object) && !isPressing(object));
+  const available = objects.filter(object => isPlayer(object) && (!isPressing(object) || pressingTrigger(object,objects)));
   const hiddenObjects = new Set();
   const runners = [];
   const passes = [];
@@ -1974,7 +2006,7 @@ function previewPlan(objects) {
       step.receipts.push({progress,time:passStart+duration});
     }
     addStep(passes,route,duration,passStart);
-    Object.assign(passes.at(-1),{actor,kind:arrow.type === 'dribble' ? 'conduzione' : arrow.type === 'shot' ? 'tiro' : 'passaggio'});
+    Object.assign(passes.at(-1),{arrow,actor,kind:arrow.type === 'dribble' ? 'conduzione' : arrow.type === 'shot' ? 'tiro' : 'passaggio'});
     arrivalTimes.push(passStart+duration);
     scheduleRuns();
   });
@@ -2025,22 +2057,68 @@ function previewPlan(objects) {
     },null);
     if (ball) hiddenObjects.add(ball.object);
   }
-  const pressingRunners = [...runners];
+  const pressingRunners = runners.map(runner => ({...runner,steps:[...runner.steps]}));
   for (const opponent of objects.filter(isPressing)) {
+    const trigger = pressingTrigger(opponent,objects);
+    const triggerStep = trigger && [...passes,...pressingRunners.flatMap(runner => runner.steps)]
+      .find(step => step.arrow === trigger);
+    if (trigger && !triggerStep) continue;
+    const start = triggerStep?.end ?? 0;
+    const currentRunner = runners.find(runner => runner.player === opponent);
+    const origin = currentRunner ? playerPosition(currentRunner,start) : [opponent.x,opponent.y];
+
     const target = pressingTarget(opponent,objects);
     const targetRunner = target && pressingRunners.find(runner => runner.player === target);
-    const ball = !target && !passes.length ? nearestBall(opponent,objects) : null;
+    const ball = !target && !passes.length ? nearestBall({...opponent,x:origin[0],y:origin[1]},objects) : null;
     const focus = target || ball;
-    const chase = focus ? [{start:0,end:0,target:[focus.x,focus.y]},
-      ...(targetRunner?.steps ?? []).map(step => ({...step,target:step.route.segments.at(-1).b}))] : passes;
-    const steps = pressureSteps(opponent,chase,focus ? 'start' : undefined);
+    const reaction = opponent.pressureStart === 'arrival' ? 'end' : 'start';
+    const chase = focus
+      ? [{start,target:targetRunner ? playerPosition(targetRunner,start) : [focus.x,focus.y]},
+          ...(targetRunner?.steps ?? []).filter(step => step.end > start).map(step => ({
+            start:Math.max(start,step.start),target:step.route.segments.at(-1).b
+          }))]
+      : passes.filter(step => step[reaction] >= start).map(step => ({
+          start:step[reaction],target:step.route.segments.at(-1).b
+        }));
+    if (triggerStep && !focus && passes.length && chase[0]?.start !== start) {
+      const {step,progress} = trackPosition(passes,start);
+      const {x,y} = pointAlongRoute(step.route,progress);
+      chase.unshift({start,target:[x,y]});
+    }
+    const steps = pressureSteps(opponent,chase,origin);
     if (!steps.length) continue;
-    runners.push({player:opponent,bib:playerBib(opponent),steps,pressing:true});
+    if (currentRunner) {
+      currentRunner.steps = [...stepsUntil(currentRunner.steps,start),...steps];
+      currentRunner.pressing = true;
+    } else {
+      runners.push({player:opponent,bib:playerBib(opponent),steps,pressing:true});
+    }
     hiddenObjects.add(opponent);
   }
 
   const duration = Math.max(0,passes.at(-1)?.end ?? 0,...runners.map(({steps}) => steps.at(-1).end));
   return {runners,passes,hiddenObjects,duration};
+}
+
+function pressingTrigger(player,objects) {
+  return player.pressureAfterId && objects.find(object => object.id === player.pressureAfterId &&
+    (isPass(object) || isRun(object)));
+}
+
+function stepsUntil(steps,time) {
+  const completed = steps.filter(step => step.end <= time);
+  const active = steps.find(step => step.start < time && time < step.end);
+  if (!active) return completed;
+  const {progress} = runnerPosition([active],time);
+  const {x,y,segment} = pointAlongRoute(active.route,progress);
+  const points = active.route.segments.slice(0,active.route.segments.indexOf(segment)).map(part => part.a);
+  const route = routeFromPoints([...points,segment.a,[x,y]]);
+  if (route) {
+    const receipts = active.receipts.filter(receipt => receipt.time < time)
+      .map(receipt => ({...receipt,progress:receipt.progress/progress}));
+    completed.push({...active,route,end:time,duration:active.duration*progress,receipts});
+  }
+  return completed;
 }
 
 function pressingTarget(player,objects) {
@@ -2061,15 +2139,13 @@ function playerPosition(runner,elapsed) {
   return [x,y];
 }
 
-function pressureSteps(opponent,passes,trigger = opponent.pressureStart === 'arrival' ? 'end' : 'start') {
+function pressureSteps(opponent,chase,origin) {
   const steps = [];
   const millisecondsPerUnit = 115/opponent.pressureSpeed;
   const standOff = 3;
-  let position = [opponent.x,opponent.y];
-  passes.forEach((pass,index) => {
-    const start = pass[trigger];
-    const next = passes[index+1]?.[trigger] ?? Infinity;
-    const [x,y] = pass.target ?? pass.route.segments.at(-1).b;
+  let position = origin;
+  chase.forEach(({start,target:[x,y]},index) => {
+    const next = chase[index+1]?.start ?? Infinity;
     const dx = x-position[0];
     const dy = y-position[1];
     const distance = Math.hypot(dx,dy);
