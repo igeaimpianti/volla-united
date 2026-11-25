@@ -63,6 +63,7 @@ const icons = {
   hurdle:'M4 20V7h16v13M2 20h5m10 0h5', ladder:'M7 3v18M17 3v18M7 5h10M7 10h10M7 15h10M7 20h10',
   goal:'M3 19V6h18v13M3 9h18M7 9v10m5-10v10m5-10v10M3 14h18',
   pole:'M12 3v17M6 21h12', run:'M3 18 17 6m-7 0h7v7', pass:'M4 18l2-2m3-3 2-2m3-3 3-3m-7 0h7v7',
+  pressing:'M12 2v4m0 12v4M2 12h4m12 0h4M12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12z',
   dribble:'M3 19c10 0 1-14 13-14m-4-3h5v5M19 18a3 3 0 1 0 0 .1', shot:'M3 18 19 4m-7 0h7v7M3 10l4-3M9 21l4-3',
   left:'M4 5v6h6M4 11a8 8 0 1 1 3 7', right:'M20 5v6h-6m6 0a8 8 0 1 0-3 7',
   minus:'M5 12h14', fit:'M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5',
@@ -132,6 +133,7 @@ const styles = `
 .vut-palette button {display:grid;justify-items:center;gap:3px;padding:6px 1px;font-size:clamp(9px,2.4vw,11px);min-height:49px;letter-spacing:-.02em}
 .vut-palette svg {color:#b4b9c9}
 .vut-palette [data-tool=player] svg,.vut-palette [data-tool=disc] svg {color:#ff6b91}
+.vut-palette [data-tool=pressing] svg {color:#ff91a6}
 .vut-palette [data-tool=opponent] svg,.vut-palette [data-tool=pass] svg {color:#72d5ff}
 .vut-palette [data-tool=hurdle] svg,.vut-palette [data-tool=ladder] svg,.vut-palette [data-tool=run] svg {color:#eeef74}
 .vut-palette [data-tool=cone] svg,.vut-palette [data-tool=pole] svg {color:#ffb46b}
@@ -221,6 +223,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       <div class="vut-palette" aria-label="Attrezzi e percorsi">
         <button data-tool="select" type="button" aria-pressed="true">${icon('select')} Seleziona</button>
         ${Object.entries(equipment).map(([type,label]) => `<button type="button" data-tool="${type}" aria-pressed="false">${icon(type)} ${type === 'zone' ? 'Delimita area' : label}</button>`).join('')}
+        <button type="button" data-tool="pressing" aria-pressed="false">${icon('pressing')} Pressing</button>
       </div>
       <div class="vut-inspector">
         <strong data-selection>Attrezzo</strong>
@@ -247,7 +250,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-pass-speed hidden><span data-ball-speed-label>Velocità passaggio</span> <select name="pass-speed">
           ${Array.from(passSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
-        <label data-pressure-speed hidden>Pressing <select name="pressure-speed">
+        <label data-pressure-speed hidden>Velocità pressing <select name="pressure-speed">
           <option value="0">Disattivata</option>
           ${Array.from(pressureSpeeds,([speed,label]) => `<option value="${speed}">${label}</option>`).join('')}
         </select></label>
@@ -653,6 +656,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       ? equipment[entry.type] + (entry.number ? ' ' + entry.number : '') + (sequenceIndex >= 0 ? ' · Sequenza ' + (sequenceIndex+1) : '')
       : 'Nessun elemento selezionato';
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
+      : tool === 'pressing' ? 'Tocca il calciatore che deve fare pressing.'
       : tool === 'zone' ? (zoneShape.value === 'free'
         ? `Tocca quattro cinesini sul campo. ${zoneCorners.length}/4 selezionati.`
         : `Tocca due cinesini allineati in orizzontale o in verticale. ${zoneCorners.length}/2 selezionati.`)
@@ -816,7 +820,23 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     paint();
   }
 
+  function configurePressing(playerIndex) {
+    const player = exercise().objects[playerIndex];
+    if (!isPlayer(player)) return;
+    if (!isPressing(player)) {
+      snapshot();
+      player.pressureSpeed = 1;
+      clearVideo();
+      markDirty();
+    }
+    selected = playerIndex;
+    setTool('select');
+    paint();
+    field('pressure-target').scrollIntoView({block:'nearest'});
+  }
+
   function place(point) {
+    if (tool === 'pressing') return configurePressing(pickObject(point,isPlayer));
     const [x,y] = pitchPoint(point);
     if (x < 0 || x > 100 || y < 0 || y > 64) return;
     const objects = exercise().objects;
@@ -1278,7 +1298,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.dataset.exercise != null) return openExercise(Number(button.dataset.exercise));
     if (button.dataset.tool) {
       stopPreview();
-      setTool(tool === 'zone' && button.dataset.tool === 'zone' ? 'select' : button.dataset.tool);
+      if (button.dataset.tool === 'pressing' && isPlayer(exercise().objects[selected])) {
+        return configurePressing(selected);
+      }
+      const next = button.dataset.tool;
+      setTool(tool === next && (next === 'zone' || next === 'pressing') ? 'select' : next);
       return paint();
     }
     if (button.closest('.vut-menu')) button.closest('details').open = false;
