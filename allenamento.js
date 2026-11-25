@@ -413,7 +413,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (entry?.type === 'hurdle') height.value = entry.height || 15;
     find('[data-rotation]').hidden = rotation === null;
     if (document.activeElement !== field('rotation')) field('rotation').value = rotation ?? '';
-    find('[data-selection]').textContent = entry ? equipment[entry.type] + ' selezionato' : 'Nessun elemento selezionato';
+    const passNumber = entry?.type === 'pass' ? objects.slice(0,selected+1).filter(isPass).length : null;
+    find('[data-selection]').textContent = entry
+      ? equipment[entry.type] + (passNumber ? ' ' + passNumber : '') + ' selezionato'
+      : 'Nessun elemento selezionato';
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
       : routeStart ? 'Tocca la destinazione della freccia.'
       : tool === 'select' && entry?.end ? 'Trascina i cerchi alle estremità per cambiare la lunghezza o il rombo centrale per curvare la freccia.'
@@ -947,6 +950,8 @@ function segmentDistance([x,y],[ax,ay],[bx,by]) {
   return Math.hypot(x-ax-fraction*dx,y-ay-fraction*dy);
 }
 
+const isPass = object => object.type === 'pass' && Boolean(object.end);
+
 function routeHandles({x,y,end,control}) {
   const middle = [(x+end[0])/2,(y+end[1])/2];
   return {start:[x,y], bend:control ? [(middle[0]+control[0])/2,(middle[1]+control[1])/2] : middle, end};
@@ -1142,6 +1147,7 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     path([[goalX,28.4],[goalX+(left ? -2 : 2),28.4],[goalX+(left ? -2 : 2),35.6],[goalX,35.6]],'#d6e7d842',white,2);
   }
 
+  const passLabels = [];
   objects.forEach((entry,index) => {
     const {type,end} = entry;
     if (!end) return;
@@ -1155,6 +1161,14 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     path(points,null,color,6,dash);
     path([end,[end[0]-size*Math.cos(heading-.46),end[1]-size*Math.sin(heading-.46)],
       [end[0]-size*Math.cos(heading+.46),end[1]-size*Math.sin(heading+.46)]],color);
+    if (isPass(entry)) {
+      const middle = Math.floor((points.length-1)/2);
+      const a = project(...points[middle]);
+      const b = project(...points[middle+1]);
+      const center = project(...routeHandles(entry).bend);
+      const direction = Math.atan2(b[1]-a[1],b[0]-a[0]);
+      passLabels.push({center,direction});
+    }
   });
 
   const props = objects.map((entry,index) => ({entry,index})).filter(({entry}) => !entry.end);
@@ -1231,6 +1245,26 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
       }
     }
   }
+  const badgeUnit = Math.max(units,2.6)/viewport.zoom;
+  passLabels.forEach(({center:[x,y],direction},index) => {
+    const offset = 17*badgeUnit*(Math.cos(direction) < 0 ? -1 : 1);
+    const margin = 12*badgeUnit;
+    const labelX = clamp(x+Math.sin(direction)*offset,margin,w-margin);
+    const labelY = clamp(y-Math.cos(direction)*offset,margin,h-margin);
+    ctx.beginPath();
+    ctx.arc(labelX,labelY,9*badgeUnit,0,Math.PI*2);
+    ctx.fillStyle = '#123b49';
+    ctx.fill();
+    ctx.lineWidth = 1.5*badgeUnit;
+    ctx.strokeStyle = '#89e9ff';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + 11*badgeUnit + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(index+1),labelX,labelY);
+  });
+
   if (routeStart) path(ring(...routeStart,1),'#fff');
   const activeRoute = objects[selected];
   if (activeRoute?.end) {
