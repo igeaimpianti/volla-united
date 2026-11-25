@@ -388,7 +388,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         drawFootballer(context,x,y,unit*1.25,view3d,Math.atan2(ty-y,tx-x),playerBib(player));
         continue;
       }
-      const {step,progress} = trackPosition(steps,elapsed);
+      const {step,progress} = runnerPosition(steps,elapsed);
       const {x,y,segment,distance} = pointAlongRoute(step.route,progress);
       const rise = step.route.jumps.reduce((jump,d) => {
         const phase = Math.abs(d-distance)/2.8;
@@ -1157,14 +1157,7 @@ function previewPlan(objects) {
     steps.push({route,start,duration,end:start+duration});
   };
 
-  const passEndTimes = objects.filter(isPass).map(arrow => {
-    const route = routeFromPoints(routePoints(arrow));
-    const previous = passes.at(-1);
-    if (!route) return previous?.end ?? 0;
-    const start = previous ? previous.end+220 : 0;
-    addStep(passes,route,clamp(route.length*38,350,2800),start);
-    return passes.at(-1).end;
-  });
+  const passArrows = objects.filter(isPass);
 
   for (const arrow of runs.length ? runs : [null]) {
     const route = previewRoute(equipment,arrow);
@@ -1188,10 +1181,53 @@ function previewPlan(objects) {
       runners.push(runner);
       if (player) hiddenObjects.add(player);
     }
-    const afterPass = runStartPass(arrow,passEndTimes.length);
-    const start = Math.max(runner.steps.at(-1)?.end ?? 0,passEndTimes[afterPass-1] ?? 0);
-    addStep(runner.steps,route,clamp(route.length*115,arrow ? 500 : 2800,18000),start);
+    const afterPass = runStartPass(arrow,passArrows.length);
+    const duration = clamp(route.length*115,arrow ? 500 : 2800,18000);
+    runner.steps.push({route,duration,afterPass,receipts:[]});
   }
+
+  const arrivalTimes = [];
+  const scheduleRuns = () => {
+    for (const runner of runners) {
+      let end = 0;
+      for (const step of runner.steps) {
+        step.start = Math.max(end,arrivalTimes[step.afterPass-1] ?? 0);
+        const last = step.receipts.at(-1);
+        step.end = last ? last.time + step.duration*(1-last.progress) : step.start+step.duration;
+        end = step.end;
+      }
+    }
+  };
+
+  scheduleRuns();
+  passArrows.forEach((arrow,index) => {
+    const points = routePoints(arrow);
+    const previous = passes.at(-1);
+    const start = previous ? previous.end+220 : 0;
+    const match = runs.length ? findReceipt(runners,arrow.end,index+1) : null;
+    const snappedRoute = match && routeFromPoints([...points.slice(0,-1),match.point]);
+    const receipt = snappedRoute ? match : null;
+    const route = snappedRoute || routeFromPoints(points);
+    if (!route) {
+      arrivalTimes.push(previous?.end ?? 0);
+      scheduleRuns();
+      return;
+    }
+
+    const duration = clamp(route.length*38,350,2800);
+    let passStart = start;
+    if (receipt) {
+      const {step,progress} = receipt;
+      const last = step.receipts.at(-1);
+      const travelTime = step.duration*(progress-(last?.progress ?? 0));
+      const earliest = (last?.time ?? step.start)+clamp(travelTime,1,250);
+      passStart = Math.max(start,earliest-duration);
+      step.receipts.push({progress,time:passStart+duration});
+    }
+    addStep(passes,route,duration,passStart);
+    arrivalTimes.push(passStart+duration);
+    scheduleRuns();
+  });
 
   if (passes.length) {
     const [x,y] = passes[0].route.segments[0].a;
@@ -1205,11 +1241,54 @@ function previewPlan(objects) {
   return {runners,passes,hiddenObjects,duration};
 }
 
+function findReceipt(runners,[x,y],passNumber) {
+  let best = null;
+  let closest = 2;
+  for (const {steps} of runners) {
+    const first = steps.findLastIndex(step => step.receipts.length);
+    for (const [index,step] of steps.entries()) {
+      // A run triggered by this pass or a later one cannot receive it on the move.
+      if (step.afterPass >= passNumber) break;
+      if (index < first) continue;
+      const minimum = step.receipts.at(-1)?.progress ?? 0;
+      for (const {a,b,length,start} of step.route.segments) {
+        const dx = b[0]-a[0];
+        const dy = b[1]-a[1];
+        const fraction = clamp(((x-a[0])*dx+(y-a[1])*dy)/length**2,0,1);
+        const point = [a[0]+dx*fraction,a[1]+dy*fraction];
+        const distance = Math.hypot(x-point[0],y-point[1]);
+        const progress = (start+fraction*length)/step.route.length;
+        if (distance < closest && progress >= minimum) {
+          closest = distance;
+          best = {step,point,progress};
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function runnerPosition(steps,elapsed) {
+  const {step,progress} = trackPosition(steps,elapsed);
+  if (!step.receipts.length || elapsed < step.start || elapsed >= step.end) {
+    return {step,progress:elapsed >= step.end ? 1 : progress};
+  }
+  let before = {time:step.start,progress:0};
+  for (const after of [...step.receipts,{time:step.end,progress:1}]) {
+    if (elapsed <= after.time) {
+      const fraction = after.time === before.time ? 1 : (elapsed-before.time)/(after.time-before.time);
+      return {step,progress:before.progress+(after.progress-before.progress)*fraction};
+    }
+    before = after;
+  }
+  return {step,progress};
+}
+
 function trackPosition(steps,elapsed) {
   const next = steps.findIndex(step => elapsed <= step.end);
   const step = next < 0 ? steps.at(-1) : steps[next];
   if (next > 0 && elapsed < step.start) return {step:steps[next-1],progress:1};
-  return {step,progress:clamp((elapsed-step.start)/step.duration,0,1)};
+  return {step,progress:step.end === step.start ? Number(elapsed >= step.end) : clamp((elapsed-step.start)/(step.end-step.start),0,1)};
 }
 
 function pointAlongRoute(route,progress) {
