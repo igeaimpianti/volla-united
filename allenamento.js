@@ -190,7 +190,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       </div>
       <div class="vut-inspector" data-preview-controls hidden>
         <button type="button" data-action="preview">${icon('play')} Anteprima esercizio</button>
-        <button type="button" data-action="video">${icon('video')} Esporta animazione</button>
+        <div class="vut-controls" role="group" aria-label="Esporta animazione">
+          <button type="button" data-action="video-arrows">${icon('video')} Esporta con frecce</button>
+          <button type="button" data-action="video-clean">${icon('video')} Esporta senza frecce</button>
+        </div>
         <a data-video-download hidden>Scarica video</a>
         <small data-preview-mode></small>
         <small data-video-status role="status" aria-live="polite"></small>
@@ -438,7 +441,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     videoStatus.textContent = '';
   }
 
-  async function exportAnimation() {
+  async function exportAnimation(showArrows) {
     const objects = exercise().objects;
     const plan = previewPlan(objects);
     clearVideo();
@@ -464,7 +467,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const title = exercise().title.trim() || session.title.trim() || 'Esercizio';
     let stream;
     try {
-      drawField(board,objects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects);
+      const boardObjects = showArrows ? objects : objects.filter(object => !object.end);
+      drawField(board,boardObjects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects);
       const draw = elapsed => {
         context.drawImage(board,0,0);
         renderPreview(context,plan,elapsed,fullPitch);
@@ -484,7 +488,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       const extension = video.type.startsWith('video/mp4') ? 'mp4' : 'webm';
       const filename = title.replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-|-$/g,'').slice(0,80) || 'Esercizio';
       videoDownload.href = URL.createObjectURL(video);
-      videoDownload.download = `${filename}.${extension}`;
+      videoDownload.download = `${filename}-${showArrows ? "con-frecce" : "senza-frecce"}.${extension}`;
       videoDownload.hidden = false;
       videoStatus.textContent = 'Video pronto.';
     } catch (error) {
@@ -959,8 +963,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.closest('.vut-menu')) button.closest('details').open = false;
     if (['remove-object','rotate-object','object-left','undo'].includes(button.dataset.action)) stopPreview();
     switch (button.dataset.action) {
-      case 'video':
-        if (!exporting) void exportAnimation();
+      case 'video-arrows':
+      case 'video-clean':
+        if (!exporting) void exportAnimation(button.dataset.action === 'video-arrows');
         break;
       case 'preview':
         if (playback) stopPreview();
