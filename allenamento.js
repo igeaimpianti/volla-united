@@ -259,6 +259,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
           <option value="departure">Alla partenza del passaggio</option>
           <option value="arrival">Alla ricezione</option>
         </select></label>
+        <button type="button" data-action="test-pressing" hidden>Prova pressing</button>
+        <small data-pressing-status role="status" hidden></small>
         <label data-height hidden>Altezza <select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
         <div class="vut-controls">
           ${iconButton('object-left','Ruota elemento a sinistra','left')}
@@ -418,8 +420,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const hasPass = objects.some(isPass);
     const hasRun = objects.some(isRun);
     const hasCircuit = objects.filter(isCircuitEquipment).length >= 2;
-    const hasPressing = objects.some(player => isPressing(player) && (hasPass ||
-      objects.some(target => isPlayer(target) && !isPressing(target) && target.id && target.id === player.pressureTargetId)));
+    const hasPressing = objects.some(player => isPressing(player) &&
+      (pressingTarget(player,objects) || hasPass || objects.some(object => object.type === 'ball')));
     find('[data-preview-controls]').hidden = !(hasPass || hasRun || hasCircuit || hasPressing);
     find('[data-preview-mode]').textContent = [
       hasPass && 'Azioni con palla in ordine numerico',
@@ -437,8 +439,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     queueBoard();
   }
 
-  function startPreview() {
-    const plan = exercisePlan();
+  function startPreview(plan = exercisePlan()) {
     if (!plan.duration) return;
     const context = previewCanvas.getContext('2d');
     playback = {frame:null,hiddenObjects:plan.hiddenObjects,plan};
@@ -628,9 +629,13 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (entry?.end) showPlayerOptions('actor','Automatico',entry.actorId);
     find('[data-pressure-speed]').hidden = !isPlayer(entry);
     find('[data-pressure-target]').hidden = !isPressing(entry);
+    action('test-pressing').hidden = !isPressing(entry);
+    const pressingStatus = find('[data-pressing-status]');
+    pressingStatus.hidden = true;
+    pressingStatus.textContent = '';
     if (isPressing(entry)) showPlayerOptions('pressure-target','Palla',entry.pressureTargetId,entry);
     field('pressure-speed').value = String(isPressing(entry) ? entry.pressureSpeed : 0);
-    find('[data-pressure-start]').hidden = !isPressing(entry) || Boolean(entry.pressureTargetId);
+    find('[data-pressure-start]').hidden = !isPressing(entry) || Boolean(pressingTarget(entry,objects)) || !objects.some(isPass);
     field('pressure-start').value = entry?.pressureStart === 'arrival' ? 'arrival' : 'departure';
     const runStart = field('run-start');
     find('[data-run-speed]').hidden = !isRun(entry);
@@ -823,9 +828,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   function configurePressing(playerIndex) {
     const player = exercise().objects[playerIndex];
     if (!isPlayer(player)) return;
-    if (!isPressing(player)) {
+    const current = exercise();
+    if (!isPressing(player) || current.progression?.active) {
       snapshot();
-      player.pressureSpeed = 1;
+      if (!isPressing(player)) player.pressureSpeed = 1;
+      if (current.progression?.active) current.progression.active = false;
       clearVideo();
       markDirty();
     }
@@ -1308,6 +1315,24 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (button.closest('.vut-menu')) button.closest('details').open = false;
     if (['remove-object','rotate-object','object-left','undo'].includes(button.dataset.action)) stopPreview();
     switch (button.dataset.action) {
+      case 'test-pressing': {
+        stopPreview();
+        const player = exercise().objects[selected];
+        const plan = exercisePlan();
+        if (plan.runners.some(runner => runner.player === player && runner.pressing)) {
+          canvas.scrollIntoView({block:'center'});
+          startPreview(plan);
+        } else {
+          const status = find('[data-pressing-status]');
+          const objects = exercise().objects;
+          const hasTarget = pressingTarget(player,objects) || objects.some(object => object.type === 'ball' || isPass(object));
+          status.textContent = hasTarget
+            ? 'Il calciatore è già a distanza di pressing. Allontanalo dal bersaglio per provare la corsa.'
+            : 'Aggiungi un pallone sul campo oppure scegli un calciatore come bersaglio.';
+          status.hidden = false;
+        }
+        break;
+      }
       case 'action-earlier':
       case 'action-later': {
         const objects = exercise().objects;
@@ -2000,19 +2025,33 @@ function previewPlan(objects) {
     },null);
     if (ball) hiddenObjects.add(ball.object);
   }
+  const pressingRunners = [...runners];
   for (const opponent of objects.filter(isPressing)) {
-    const target = available.find(player => player.id && player.id === opponent.pressureTargetId);
-    const targetRunner = target && runners.find(runner => runner.player === target);
-    const chase = target ? [{start:0,end:0,target:[target.x,target.y]},
+    const target = pressingTarget(opponent,objects);
+    const targetRunner = target && pressingRunners.find(runner => runner.player === target);
+    const ball = !target && !passes.length ? nearestBall(opponent,objects) : null;
+    const focus = target || ball;
+    const chase = focus ? [{start:0,end:0,target:[focus.x,focus.y]},
       ...(targetRunner?.steps ?? []).map(step => ({...step,target:step.route.segments.at(-1).b}))] : passes;
-    const steps = pressureSteps(opponent,chase,target ? 'start' : undefined);
+    const steps = pressureSteps(opponent,chase,focus ? 'start' : undefined);
     if (!steps.length) continue;
-    runners.push({player:opponent,bib:playerBib(opponent),steps});
+    runners.push({player:opponent,bib:playerBib(opponent),steps,pressing:true});
     hiddenObjects.add(opponent);
   }
 
   const duration = Math.max(0,passes.at(-1)?.end ?? 0,...runners.map(({steps}) => steps.at(-1).end));
   return {runners,passes,hiddenObjects,duration};
+}
+
+function pressingTarget(player,objects) {
+  return objects.find(target => isPlayer(target) && target !== player && target.id &&
+    target.id === player?.pressureTargetId);
+}
+
+function nearestBall(player,objects) {
+  const distance = ball => Math.hypot(ball.x-player.x,ball.y-player.y);
+  return objects.filter(object => object.type === 'ball').reduce((best,ball) =>
+    !best || distance(ball) < distance(best) ? ball : best,null);
 }
 
 function playerPosition(runner,elapsed) {
