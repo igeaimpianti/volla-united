@@ -10,6 +10,7 @@ const discColors = {
   green:['Verde','#90f35a'], white:['Bianco','#f8f8fb']
 };
 const zoneColors = {blue:discColors.blue,red:discColors.red};
+const zoneShapes = {free:'Quattro cinesini',square:'Quadrato',rectangle:'Rettangolo',diamond:'Rombo'};
 const isDisc = object => object?.type === 'disc';
 const isZone = object => object?.type === 'zone';
 const colorKey = (palette,key,fallback) => Object.hasOwn(palette,key) ? key : fallback;
@@ -223,6 +224,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         <label data-show-zones hidden><input type="checkbox" name="show-zones" checked> Mostra aree</label>
         <label data-align-discs hidden><input type="checkbox" name="align-discs" checked> Allinea cinesini</label>
         <label data-disc-color hidden>Colore cinesino <select name="disc-color">${colorOptions(discColors)}</select></label>
+        <label data-zone-shape hidden>Forma area <select name="zone-shape">
+          ${Object.entries(zoneShapes).map(([value,label]) => `<option value="${value}">${label}</option>`).join('')}
+        </select></label>
         <label data-zone-color hidden>Colore area <select name="zone-color">${colorOptions(zoneColors)}</select></label>
         <label data-bib hidden>Casacca <select name="bib">
           ${Object.entries(bibs).map(([value,[name]]) => `<option value="${value}">${name}</option>`).join('')}
@@ -277,6 +281,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let selected = -1;
   let discColor = 'pink';
   let zoneColor = 'blue';
+  const zoneShape = field('zone-shape');
   const zoneCorners = [];
   let alignment = null;
   const showZones = field('show-zones');
@@ -506,7 +511,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     let stream;
     try {
       const boardObjects = showArrows ? objects : objects.filter(object => !object.end);
-      drawField(board,boardObjects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects,[],showZones.checked);
+      drawField(board,boardObjects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects);
       const draw = elapsed => {
         context.drawImage(board,0,0);
         renderPreview(context,plan,elapsed,fullPitch);
@@ -554,6 +559,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     find('[data-align-discs]').hidden = !isDisc(entry) && tool !== 'disc';
     find('[data-disc-color]').hidden = !isDisc(entry) && tool !== 'disc';
     field('disc-color').value = isDisc(entry) ? colorKey(discColors,entry.color,'pink') : discColor;
+    find('[data-zone-shape]').hidden = tool !== 'zone';
     find('[data-zone-color]').hidden = !isZone(entry) && tool !== 'zone';
     field('zone-color').value = isZone(entry) ? colorKey(zoneColors,entry.color,'blue') : zoneColor;
     const bibTarget = isPlayer(entry) ? entry : null;
@@ -587,7 +593,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       ? equipment[entry.type] + (passNumber ? ' ' + passNumber : '') + ' selezionato'
       : 'Nessun elemento selezionato';
     find('[data-hint]').textContent = tool === 'pan' ? 'Trascina per spostare l’inquadratura.'
-      : tool === 'zone' ? `Tocca quattro cinesini sul campo. ${zoneCorners.length}/4 selezionati.`
+      : tool === 'zone' ? (zoneShape.value === 'free'
+        ? `Tocca quattro cinesini sul campo. ${zoneCorners.length}/4 selezionati.`
+        : `Tocca due cinesini allineati in orizzontale o in verticale. ${zoneCorners.length}/2 selezionati.`)
       : tool === 'disc' && alignDiscs.checked ? 'Tocca per posizionare o trascina prima di rilasciare per vedere le guide.'
       : isZone(entry) ? 'Per modificare il perimetro, sposta i cinesini ai vertici.'
       : routeStart ? 'Tocca la destinazione della freccia.'
@@ -712,19 +720,37 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     }
 
     const corners = [...zoneCorners,index];
-    if (corners.length < 4) {
+    const shape = zoneShape.value;
+    if (corners.length < (shape === 'free' ? 4 : 2)) {
       zoneCorners.push(index);
       return paint();
     }
     const discs = corners.map(index => objects[index]);
-    if (!sortZonePoints(discs.map(({x,y}) => [x,y])).length) {
+    const points = discs.map(({x,y}) => [x,y]);
+    let side = 1;
+    if (shape !== 'free') {
+      const [[ax,ay],[bx,by]] = points;
+      if (Math.hypot(bx-ax,by-ay) < 0.5 || (ax !== bx && ay !== by)) {
+        find('[data-hint]').textContent = 'Scegli un secondo cinesino sulla stessa riga o colonna.';
+        return;
+      }
+      const fits = direction => presetZonePoints(points,shape,direction).every(([x,y]) =>
+        x >= 0 && x <= 100 && y >= 0 && y <= 64);
+      if (!fits(side)) side = -1;
+      if (!fits(side)) {
+        find('[data-hint]').textContent = 'La forma supera i bordi del campo. Scegli due cinesini più vicini o più centrati.';
+        return;
+      }
+    } else if (!sortZonePoints(points).length) {
       find('[data-hint]').textContent = 'Scegli un altro cinesino per ottenere un’area con quattro vertici distinti.';
       return;
     }
     snapshot();
     showZones.checked = true;
     const discIds = discs.map(disc => disc.id ??= crypto.randomUUID());
-    selected = objects.push({type:'zone',discIds,color:zoneColor})-1;
+    const zone = {type:'zone',discIds,color:zoneColor};
+    if (shape !== 'free') Object.assign(zone,{shape,side});
+    selected = objects.push(zone)-1;
     setTool('select');
     markDirty();
     paint();
@@ -954,6 +980,11 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   field('disc-color').onchange = () => {
     discColor = colorKey(discColors,field('disc-color').value,'pink');
     changeSelectedColor(isDisc,discColor);
+  };
+
+  zoneShape.onchange = () => {
+    zoneCorners.length = 0;
+    paint();
   };
 
   field('zone-color').onchange = () => {
@@ -1806,9 +1837,27 @@ function sortZonePoints(points) {
   return distinct && Math.abs(area) > 0.02 ? vertices : [];
 }
 
+function presetZonePoints([[ax,ay],[bx,by]],shape,side) {
+  const dx = bx-ax;
+  const dy = by-ay;
+  if (Math.hypot(dx,dy) < 0.5) return [];
+  if (shape === 'diamond') {
+    const cx = (ax+bx)/2;
+    const cy = (ay+by)/2;
+    return [[ax,ay],[cx-dy/3,cy+dx/3],[bx,by],[cx+dy/3,cy-dx/3]];
+  }
+  const depth = (shape === 'rectangle' ? 0.5 : 1)*side;
+  return [[ax,ay],[bx,by],[bx-dy*depth,by+dx*depth],[ax-dy*depth,ay+dx*depth]];
+}
+
 function zonePoints(zone,objects) {
   const discs = zone.discIds.map(id => objects.find(entry => isDisc(entry) && entry.id === id));
-  return sortZonePoints(discs.filter(Boolean).map(({x,y}) => [x,y]));
+  if (discs.some(disc => !disc)) return [];
+  const points = discs.map(({x,y}) => [x,y]);
+  if (points.length === 2 && ['square','rectangle','diamond'].includes(zone.shape)) {
+    return presetZonePoints(points,zone.shape,zone.side === -1 ? -1 : 1);
+  }
+  return sortZonePoints(points);
 }
 
 function pointInZone([x,y],points) {
