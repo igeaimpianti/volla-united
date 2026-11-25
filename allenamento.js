@@ -1246,11 +1246,18 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     }
   }
   const badgeUnit = Math.max(units,2.6)/viewport.zoom;
+  const badgeCenters = [];
   passLabels.forEach(({center:[x,y],direction},index) => {
-    const offset = 17*badgeUnit*(Math.cos(direction) < 0 ? -1 : 1);
+    const offset = 17*badgeUnit;
     const margin = 12*badgeUnit;
-    const labelX = clamp(x+Math.sin(direction)*offset,margin,w-margin);
-    const labelY = clamp(y-Math.cos(direction)*offset,margin,h-margin);
+    const positions = [[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1],[2.3,0],[-2.3,0]];
+    const candidates = positions.map(([side,along]) => [
+      clamp(x+offset*(Math.sin(direction)*side+Math.cos(direction)*along*1.25),margin,w-margin),
+      clamp(y+offset*(-Math.cos(direction)*side+Math.sin(direction)*along*1.25),margin,h-margin)
+    ]);
+    const [labelX,labelY] = candidates.find(([px,py]) => badgeCenters.every(([bx,by]) =>
+      Math.hypot(px-bx,py-by) >= 20*badgeUnit)) || candidates[0];
+    badgeCenters.push([labelX,labelY]);
     ctx.beginPath();
     ctx.arc(labelX,labelY,9*badgeUnit,0,Math.PI*2);
     ctx.fillStyle = '#123b49';
