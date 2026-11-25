@@ -437,10 +437,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     playback.frame = requestAnimationFrame(tick);
   }
 
-  function renderPreview(context,plan,elapsed,{zoom,x:offsetX,y:offsetY}) {
-    const unit = context.canvas.width/1500*zoom;
+  function renderPreview(context,plan,elapsed,{zoom,x:offsetX,y:offsetY},projection = context.canvas) {
+    const unit = projection.width/1500*zoom;
     const at = (x,y,z) => {
-      const [px,py] = projectPoint(context.canvas,view3d,angle,x,y,z);
+      const [px,py] = projectPoint(projection,view3d,angle,x,y,z);
       return [px*zoom+offsetX,py*zoom+offsetY];
     };
     for (const {player,bib,steps} of plan.runners) {
@@ -500,21 +500,23 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     }
     setBusy(true);
     videoStatus.textContent = 'Preparazione video…';
-    const fullPitch = {zoom:1,x:0,y:0};
-    board.width = 1200;
-    board.height = 800;
+    const projection = {width:1200,height:800};
+    const frame = videoFrame(projection,objects,plan,view3d,angle);
+    board.width = frame.width;
+    board.height = frame.height;
+    const camera = {zoom:1,x:-frame.x,y:-frame.y};
     const recording = document.createElement('canvas');
-    recording.width = board.width;
-    recording.height = board.height;
+    recording.width = frame.width;
+    recording.height = frame.height;
     const context = recording.getContext('2d');
     const title = exercise().title.trim() || session.title.trim() || 'Esercizio';
     let stream;
     try {
       const boardObjects = showArrows ? objects : objects.filter(object => !object.end);
-      drawField(board,boardObjects,view3d,angle,-1,null,fullPitch,1,null,plan.hiddenObjects);
+      drawField(board,boardObjects,view3d,angle,-1,null,camera,1,null,plan.hiddenObjects,[],true,null,frame,projection);
       const draw = elapsed => {
         context.drawImage(board,0,0);
-        renderPreview(context,plan,elapsed,fullPitch);
+        renderPreview(context,plan,elapsed,camera,projection);
       };
       draw(0);
       stream = recording.captureStream(30);
@@ -1869,12 +1871,43 @@ function pointInZone([x,y],points) {
   return inside;
 }
 
-function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null, hiddenObjects, zoneCorners = [], showZones = true, alignment = null) {
+function videoFrame(board,objects,plan,perspective,angle) {
+  const points = objects.flatMap(object => {
+    if (isZone(object)) return zonePoints(object,objects);
+    if (object.end) return routePoints(object);
+    return [[object.x,object.y]];
+  });
+  const steps = [...plan.passes,...plan.runners.flatMap(runner => runner.steps)];
+  for (const {route} of steps) {
+    for (const {a,b} of route.segments) points.push(a,b);
+  }
+  const min = Math.min(...points.map(([x]) => x));
+  const max = Math.max(...points.map(([x]) => x));
+  const leftUsed = min < 50-1e-8;
+  const rightUsed = max > 50+1e-8;
+  const half = leftUsed === rightUsed ? null : leftUsed ? 'left' : 'right';
+  if (!half) return {x:0,y:0,width:board.width,height:board.height,half};
+
+  const left = half === 'left' ? -2 : 50;
+  const right = half === 'left' ? 50 : 102;
+  const projected = [[left,-2],[right,-2],[right,66],[left,66]].map(([x,y]) =>
+    projectPoint(board,perspective,angle,x,y));
+  const xs = projected.map(([x]) => x);
+  const ys = projected.map(([,y]) => y);
+  // Leave room for equipment, players and pass numbers along the touchlines.
+  const x = 2*Math.floor((Math.min(...xs)-58)/2);
+  const y = perspective ? 2*Math.floor((Math.min(...ys)-90)/2) : 0;
+  const endX = 2*Math.ceil((Math.max(...xs)+58)/2);
+  const endY = perspective ? 2*Math.ceil((Math.max(...ys)+58)/2) : board.height;
+  return {x,y,width:endX-x,height:endY-y,half};
+}
+
+function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null, hiddenObjects, zoneCorners = [], showZones = true, alignment = null, exportFrame = null, projection = canvas) {
   const ctx = canvas.getContext('2d');
-  const {width:w,height:h} = canvas;
+  const {width:w,height:h} = projection;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
-  const project = (x,y,z) => projectPoint(canvas,perspective,angle,x,y,z);
+  const project = (x,y,z) => projectPoint(projection,perspective,angle,x,y,z);
 
   function path(points, fill, stroke, weight = 3, dash = []) {
     ctx.beginPath();
@@ -1911,10 +1944,17 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
   }
 
   ctx.fillStyle = '#101c18';
-  ctx.fillRect(0,0,w,h);
+  ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.save();
   ctx.translate(viewport.x,viewport.y);
   ctx.scale(viewport.zoom,viewport.zoom);
+  ctx.save();
+  if (exportFrame?.half) {
+    const left = exportFrame.half === 'left' ? -4 : 49.8;
+    const right = exportFrame.half === 'left' ? 50.2 : 104;
+    path(rect(left,-4,right-left,74));
+    ctx.clip();
+  }
   if (perspective) path(rect(-3,0,106,68),'#0a1411');
   path(rect(-2,-2,104,68),'#1c4933', '#39624e',2);
   for (let i=0;i<10;i++) path(rect(i*10,0,10,64),i%2 ? '#307951' : '#286d48');
@@ -1937,6 +1977,8 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     const goalX = left ? 0 : 100;
     path([[goalX,28.4],[goalX+(left ? -2 : 2),28.4],[goalX+(left ? -2 : 2),35.6],[goalX,35.6]],'#d6e7d842',white,2);
   }
+
+  ctx.restore();
 
   objects.forEach((entry,index) => {
     if (!showZones || !isZone(entry)) return;
@@ -2037,13 +2079,14 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
   }
   const badgeUnit = Math.max(units,2.6)/viewport.zoom;
   const badgeCenters = [];
+  const labelFrame = exportFrame ?? {x:0,y:0,width:w,height:h};
   passLabels.forEach(({center:[x,y],direction},index) => {
     const offset = 17*badgeUnit;
     const margin = 12*badgeUnit;
     const positions = [[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1],[2.3,0],[-2.3,0]];
     const candidates = positions.map(([side,along]) => [
-      clamp(x+offset*(Math.sin(direction)*side+Math.cos(direction)*along*1.25),margin,w-margin),
-      clamp(y+offset*(-Math.cos(direction)*side+Math.sin(direction)*along*1.25),margin,h-margin)
+      clamp(x+offset*(Math.sin(direction)*side+Math.cos(direction)*along*1.25),labelFrame.x+margin,labelFrame.x+labelFrame.width-margin),
+      clamp(y+offset*(-Math.cos(direction)*side+Math.sin(direction)*along*1.25),labelFrame.y+margin,labelFrame.y+labelFrame.height-margin)
     ]);
     const [labelX,labelY] = candidates.find(([px,py]) => badgeCenters.every(([bx,by]) =>
       Math.hypot(px-bx,py-by) >= 20*badgeUnit)) || candidates[0];
