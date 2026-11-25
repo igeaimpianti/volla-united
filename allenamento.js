@@ -4,6 +4,14 @@ const equipment = {
   disc: 'Cinesino', cone: 'Cono', hurdle: 'Ostacolo', ladder: 'Scaletta',
   goal: 'Porticina', pole: 'Paletto', run: 'Corsa', pass: 'Passaggio'
 };
+const bibs = {
+  red:['Rossa','#f14967'], blue:['Azzurra','#61c9ff'], yellow:['Gialla','#fce34c'],
+  green:['Verde','#83ed62'], orange:['Arancione','#ff9b48'], purple:['Viola','#c294ff'],
+  white:['Bianca','#f8f8fb'], none:['Senza casacca',null]
+};
+const isPlayer = object => object?.type === 'player' || object?.type === 'opponent';
+const defaultBib = type => type === 'opponent' ? 'blue' : 'red';
+const playerBib = object => Object.hasOwn(bibs,object?.bib ?? '') ? object.bib : defaultBib(object?.type);
 const heights = [15, 23, 30, 40, 50, 60];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, character =>
   ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'})[character]);
@@ -186,6 +194,9 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       </div>
       <div class="vut-inspector">
         <strong data-selection>Attrezzo</strong>
+        <label data-bib hidden>Casacca <select name="bib">
+          ${Object.entries(bibs).map(([value,[name]]) => `<option value="${value}">${name}</option>`).join('')}
+        </select></label>
         <label data-height hidden>Altezza <select name="height">${heights.map(height => `<option value="${height}">${height} cm</option>`).join('')}</select></label>
         <div class="vut-controls">
           ${iconButton('object-left','Ruota elemento a sinistra','left')}
@@ -230,6 +241,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
   let exporting = false;
   let loadingArchive = true;
   let playback = null;
+  const bibPreferences = {player:'red',opponent:'blue'};
   const exercise = () => session.exercises[index];
 
   function markDirty(value = true) {
@@ -343,7 +355,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (!route) return;
     const duration = clamp(route.length*115,2800,18000);
     const context = previewCanvas.getContext('2d');
-    playback = {start:null,frame:null};
+    const [sx,sy] = route.segments[0].a;
+    const nearest = objects.filter(isPlayer).reduce((best,player) =>
+      !best || Math.hypot(player.x-sx,player.y-sy) < Math.hypot(best.x-sx,best.y-sy) ? player : best,null);
+    playback = {start:null,frame:null,player:nearest};
     previewCanvas.hidden = false;
     action('preview').innerHTML = icon('stop') + ' Ferma anteprima';
     function tick(time) {
@@ -372,7 +387,6 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const [px,py] = at(x,y,view3d ? rise*6 : 0);
     const unit = screenUnits(1);
     const bob = view3d ? py : py-rise*12*unit;
-    const radius = 7*unit;
     context.beginPath();
     context.ellipse(groundX,groundY+2*unit,9*unit,3*unit,0,0,Math.PI*2);
     context.fillStyle = '#102218a0';
@@ -380,20 +394,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     const [aheadX,aheadY] = at(step.b[0],step.b[1]);
     const [backX,backY] = at(step.a[0],step.a[1]);
     const direction = Math.atan2(aheadY-backY,aheadX-backX);
-    context.beginPath();
-    context.moveTo(px+Math.cos(direction)*12*unit,bob+Math.sin(direction)*12*unit);
-    context.lineTo(px+Math.cos(direction+.6)*radius,bob+Math.sin(direction+.6)*radius);
-    context.lineTo(px+Math.cos(direction-.6)*radius,bob+Math.sin(direction-.6)*radius);
-    context.closePath();
-    context.fillStyle = '#fff';
-    context.fill();
-    context.beginPath();
-    context.arc(px,bob,radius,0,Math.PI*2);
-    context.fillStyle = rise > .1 ? '#edbf42' : '#e24263';
-    context.fill();
-    context.lineWidth = 2*unit;
-    context.strokeStyle = '#fff';
-    context.stroke();
+    drawFootballer(context,px,bob,unit*.72,view3d,direction,playerBib(playback.player),Math.sin(distance*2));
+
   }
 
   function paint() {
@@ -408,6 +410,10 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     action('undo').disabled = busy || !undo.length;
     action('zoom-in').disabled = busy || viewport.zoom >= 4;
     action('zoom-out').disabled = busy || viewport.zoom <= 1;
+    const bibTarget = isPlayer(entry) ? entry : null;
+    const bibTool = isPlayer({type:tool}) ? tool : null;
+    find('[data-bib]').hidden = !bibTarget && !bibTool;
+    field('bib').value = bibTarget ? playerBib(bibTarget) : bibPreferences[bibTool] ?? 'red';
     const height = field('height');
     find('[data-height]').hidden = entry?.type !== 'hurdle' && tool !== 'hurdle';
     if (entry?.type === 'hurdle') height.value = entry.height || 15;
@@ -516,7 +522,7 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
         const points = routePoints(entry).map(p => at(...p));
         distance = Math.min(...points.slice(1).map((p,i) => segmentDistance(point,points[i],p)));
       }
-      const z = {hurdle:(entry.height || 15)/10,goal:3,player:3,opponent:3,pole:6,cone:2.9}[entry.type];
+      const z = {hurdle:(entry.height || 15)/10,goal:3,player:4.5,opponent:4.5,pole:6,cone:2.9}[entry.type];
       if (view3d && z) distance = segmentDistance(point,base,at(entry.x,entry.y,z));
       if (distance <= best) {
         best = distance;
@@ -546,6 +552,8 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
       entry.end = [x,y];
     } else if (tool === 'hurdle') {
       entry.height = Number(field('height').value);
+    } else if (isPlayer(entry)) {
+      entry.bib = bibPreferences[tool];
     }
     snapshot();
     const placed = objects.push(entry)-1;
@@ -687,6 +695,21 @@ export async function mountTraining(host, client, profile, categoryNames, onDirt
     if (field('rotation').value === '') return;
     rotateSelection(Number(field('rotation').value));
     field('rotation').value = selectionRotation(exercise().objects[selected]) ?? '';
+  };
+
+  field('bib').onchange = () => {
+    const bib = field('bib').value;
+    if (!Object.hasOwn(bibs,bib)) return;
+    const entry = exercise().objects[selected];
+    if (isPlayer(entry)) {
+      snapshot();
+      entry.bib = bib;
+      markDirty();
+    } else if (isPlayer({type:tool})) {
+      bibPreferences[tool] = bib;
+    }
+    stopPreview();
+    paint();
   };
 
   field('height').onchange = () => {
@@ -1078,6 +1101,73 @@ function previewRoute(objects,selected) {
   return {segments,length,jumps};
 }
 
+function drawFootballer(ctx,x,y,scale,perspective,direction,bib,stride = 0) {
+  const [,color] = bibs[bib] || bibs.red;
+  const kit = '#222937';
+  const skin = '#d9a47d';
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(scale,scale);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  function shape(points,fill,border = '#142421') {
+    ctx.beginPath();
+    ctx.moveTo(...points[0]);
+    for (const point of points.slice(1)) ctx.lineTo(...point);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+  }
+
+  function limb(points,color,width) {
+    ctx.beginPath();
+    ctx.moveTo(...points[0]);
+    for (const point of points.slice(1)) ctx.lineTo(...point);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  }
+
+  function head(x,y,radius,color) {
+    ctx.beginPath();
+    ctx.arc(x,y,radius,0,Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#182321';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+  }
+
+  if (perspective) {
+    const turn = Math.cos(direction);
+    const swing = stride*4;
+    for (const side of [-1,1]) {
+      const knee = side*5+side*swing;
+      const foot = side*6+side*swing+turn*2;
+      limb([[side*4,-18],[knee,-9],[foot,-2]],skin,4.7);
+      limb([[knee,-8],[foot,-2]],'#f0f1f6',3.4);
+      limb([[foot-2,-1],[foot+turn*3+2,-1]],kit,4);
+      limb([[side*7,-34],[side*10,-26],[side*9-side*swing,-22]],skin,4);
+    }
+    shape([[-7,-23],[7,-23],[6,-15],[1,-15],[0,-19],[-1,-15],[-6,-15]],kit);
+    shape([[-12,-32],[-7,-37],[7,-37],[12,-32],[9,-27],[7,-30],[7,-22],[-7,-22],[-7,-30],[-9,-27]],kit);
+    if (color) shape([[-6,-35],[-3,-36],[0,-33],[3,-36],[6,-35],[5,-30],[6,-23],[-6,-23],[-5,-30]],color);
+    head(turn*1.1,-42,5.3,skin);
+    limb([[turn*1.1-3.5,-45],[turn*1.1,-46.5],[turn*1.1+3.5,-45]],'#392d2a',2.3);
+  } else {
+    ctx.rotate(direction+Math.PI/2);
+    shape([[-4,5],[4,5],[5+stride*3,13],[1+stride*3,13],[0,9],[-1-stride*3,13],[-5-stride*3,13]],kit);
+    shape([[-10,-3],[-6,-8],[6,-8],[10,-3],[7,1],[5,-1],[5,7],[-5,7],[-5,-1],[-7,1]],kit);
+    if (color) shape([[-4,-7],[-2,-8],[0,-5],[2,-8],[4,-7],[4,5],[-4,5]],color);
+    head(0,-11,3.7,skin);
+  }
+  ctx.restore();
+}
+
 function drawField(canvas, objects, perspective, angle, selected, routeStart, viewport = {zoom:1,x:0,y:0}, units = 1, grip = null) {
   const ctx = canvas.getContext('2d');
   const {width:w,height:h} = canvas;
@@ -1219,30 +1309,20 @@ function drawField(canvas, objects, perspective, angle, selected, routeStart, vi
     } else if (type === 'pole') {
       path(ring(x,y,1.2),'#ffc95a','#4e3320',4);
       if (perspective) prop([[0,0,0],[0,0,6]],null,'#ffc95a',7);
-    } else {
-      const ball = type === 'ball';
-      const z = perspective && !ball ? 3 : 0;
-      const color = ball ? '#fafafa' : type === 'player' ? '#f14967' : '#6bc6ff';
-      if (z) prop([[0,0,0],[0,0,z]],null,'#172027',14);
-      if (!ball && entry.rotation != null) {
-        prop([[3,0,z],[1.35,-.9,z],[1.35,.9,z]],color,'#172027',2);
-      }
-      const [px,py] = project(x,y,z);
-      const radius = ball ? 11 : 17;
-      const shading = ctx.createRadialGradient(px-radius*.3,py-radius*.35,1,px,py,radius);
-      shading.addColorStop(0,color);
-      shading.addColorStop(.73,color);
-      shading.addColorStop(1,ball ? '#919ca4' : '#263546');
+    } else if (isPlayer(entry)) {
+      const [px,py] = project(x,y);
+      const [tx,ty] = project(x+Math.cos(rotation),y+Math.sin(rotation));
+      drawFootballer(ctx,px,py,w/1500*1.25,perspective,Math.atan2(ty-py,tx-px),playerBib(entry));
+    } else if (type === 'ball') {
+      const [px,py] = project(x,y);
       ctx.beginPath();
-      ctx.arc(px,py,radius,0,2*Math.PI);
-      ctx.fillStyle = shading;
+      ctx.arc(px,py,11,0,2*Math.PI);
+      ctx.fillStyle = '#fafafa';
       ctx.fill();
-      if (ball) {
-        ctx.beginPath();
-        ctx.arc(px,py,4,0,2*Math.PI);
-        ctx.fillStyle = '#252932';
-        ctx.fill();
-      }
+      ctx.beginPath();
+      ctx.arc(px,py,4,0,2*Math.PI);
+      ctx.fillStyle = '#252932';
+      ctx.fill();
     }
   }
   const badgeUnit = Math.max(units,2.6)/viewport.zoom;
