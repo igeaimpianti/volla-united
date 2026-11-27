@@ -1042,7 +1042,7 @@ function formatMessage(m){
  const date=isNaN(+dt)?m.match_date:dt.toLocaleDateString('it-IT',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}).toUpperCase();
  const names=(m.player_ids||[]).map(id=>players.find(p=>p.id===id)).filter(Boolean).sort(sortPlayers);
  const location=canonicalField(m.field_name)||m.field_name||'DA DEFINIRE';
- return `ⒸⓄⓃⓋⓄⒸⒶⓏⒾⓄⓃⒺ\n\n⚽️ 𝚃𝙸𝙿𝙾𝙻𝙾𝙶𝙸𝙰 𝙶𝙰𝚁𝙰: ${m.match_type||''}\n🏟 𝙲𝙰𝙼𝙿𝙾 𝙳𝙰 𝙶𝙸𝙾𝙲𝙾: ${location}\n🗓 𝙳𝙰𝚃A: ${date}\n${isTournament(m)?'🏆 TORNEO: '+(m.tournament_name||''):'🥅 𝙰𝚅𝚅𝙴𝚁𝚂𝙰𝚁𝙸𝙾: '+(m.opponent||'')}\n⏱ 𝙾𝚛𝚊 𝚌𝚘𝚗𝚟𝚘𝚌𝚊𝚣𝚒𝚘𝚗𝚎: ${(m.meeting_time||'').slice(0,5).replace(':',',')}\n⏱ inizio partita : ${(m.kick_off_time||'').slice(0,5).replace(':',',')}\n🎽 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚘 𝚐𝚊𝚛𝚊:\n𝑴𝒂𝒈𝒍𝒊𝒂 𝐆𝐀𝐑𝐀  ${m.jersey_color||''}\n𝑷𝒂𝒏𝒕𝒂𝒍𝒐𝒏𝒄𝒊𝒏𝒊 ${m.shorts_color||''}\n𝑪𝒂𝒍𝒛𝒆𝒓𝒐𝒕𝒕𝒊 ${m.socks_color||''}\n⚠️ 𝐀𝐓𝐓𝐄𝐍𝐙𝐈𝐎𝐍𝐄\n${m.notice||''}\nℂ𝕆ℕ𝕍𝕆ℂ𝔸𝕋𝕀\n${names.map((p,i)=>`${i+1}. ${upper(p.last_name)} ${upper(p.first_name)}`).join('\n')}\n🖋 𝙼𝚒𝚜𝚝𝚎𝚛\n${m.coaches_text||''}\n📍 POSIZIONE: ${location}${fieldShortLink(m)?'\n'+fieldShortLink(m):''}\n#𝚠𝚎𝙻⚽️𝚟𝚎 VOLLAUNITED🔥`;
+ return `ⒸⓄⓃⓋⓄⒸⒶⓏⒾⓄⓃⒺ\n\n⚽️ 𝚃𝙸𝙿𝙾𝙻𝙾𝙶𝙸𝙰 𝙶𝙰𝚁𝙰: ${m.match_type||''}\n🏟 𝙲𝙰𝙼𝙿𝙾 𝙳𝙰 𝙶𝙸𝙾𝙲𝙾: ${location}\n🗓 𝙳𝙰𝚃A: ${date}\n${isTournament(m)?'🏆 TORNEO: '+(m.tournament_name||''):'🥅 𝙰𝚅𝚅𝙴𝚁𝚂𝙰𝚁𝙸𝙾: '+(m.opponent||'')}\n⏱ 𝙾𝚛𝚊 𝚌𝚘𝚗𝚟𝚘𝚌𝚊𝚣𝚒𝚘𝚗𝚎: ${(m.meeting_time||'').slice(0,5).replace(':',',')}\n⏱ inizio partita : ${(m.kick_off_time||'').slice(0,5).replace(':',',')}\n🎽 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚘 𝚐𝚊𝚛𝚊:\n𝑴𝒂𝒈𝒍𝒊𝒂 𝐆𝐀𝐑𝐀  ${m.jersey_color||''}\n𝑷𝒂𝒏𝒕𝒂𝒍𝒐𝒏𝒄𝒊𝒏𝒊 ${m.shorts_color||''}\n𝑪𝒂𝒍𝒛𝒆𝒓𝒐𝒕𝒕𝒊 ${m.socks_color||''}\n⚠️ 𝐀𝐓𝐓𝐄𝐍𝐙𝐈𝐎𝐍𝐄\n${m.notice||''}\nℂ𝕆ℕ𝕍𝕆ℂ𝔸𝕋𝕀\n${names.map((p,i)=>`${i+1}. ${upper(p.last_name)} ${upper(p.first_name)}`).join('\n')}\n🖋 𝙼𝚒𝚜𝚝𝚎𝚛\n${m.coaches_text||''}\n📍 POSIZIONE: ${location}\n#𝚠𝚎𝙻⚽️𝚟𝚎 VOLLAUNITED🔥`;
 }
 function preview(m,target){
  const area=$(target);if(!area)return;
@@ -1081,26 +1081,17 @@ async function vuCopyCallup(message){
 async function shareCallupWhatsApp(message){
  const fullText=String(message||'').trim();
  if(!fullText)return toast('Nessun messaggio da condividere');
- // For messages containing a link, send the complete encoded text directly to WhatsApp to avoid iOS link-only extraction.
- // The Web Share API must start in the original click gesture, before awaits.
- if(typeof navigator.share==='function' && !/https?:\/\//i.test(fullText)){
-  try{
-   await navigator.share({text:fullText});
-   return;
-  }catch(err){
-   if(err?.name==='AbortError')return;
-   console.warn('Condivisione testo WhatsApp',err);
-  }
+ if(typeof navigator.share==='function'){
+  try{await navigator.share({text:fullText});return}
+  catch(err){if(err?.name==='AbortError')return;console.warn('Condivisione testo WhatsApp',err)}
  }
- const target='https://api.whatsapp.com/send?text='+encodeURIComponent(fullText);
- window.location.assign(target);
+ window.location.assign('https://wa.me/?text='+encodeURIComponent(fullText));
 }
 function shareMatchLocation(m){
- const link=fieldShortLink(m);
- if(!link)return toast('Posizione non disponibile: configura il link Google Maps del campo');
  const name=canonicalField(m.field_name)||m.field_name||'CAMPO DA GIOCO';
- const text='📍 Ecco la posizione del campo '+name+'\n\n'+link;
- window.location.href='https://api.whatsapp.com/send?text='+encodeURIComponent(text);
+ const link=fieldLink(m);
+ const text='📍 Ecco la posizione del campo '+name+(link?'\n\n'+link:'');
+ window.location.assign('https://wa.me/?text='+encodeURIComponent(text));
 }
 function shareWhatsApp(message){
   if(!message)return toast('Nessun messaggio da condividere');
