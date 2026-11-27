@@ -1081,11 +1081,11 @@ async function vuCopyCallup(message){
 async function shareCallupWhatsApp(message){
  const fullText=String(message||'').trim();
  if(!fullText)return toast('Nessun messaggio da condividere');
- if(typeof navigator.share==='function' && !/https?:\/\//i.test(fullText)){
+ if(typeof navigator.share==='function'){
   try{await navigator.share({text:fullText});return}
   catch(err){if(err?.name==='AbortError')return;console.warn('Condivisione testo WhatsApp',err)}
  }
- window.location.assign('https://wa.me/?text='+encodeURIComponent(fullText));
+ await vuCopyCallup(fullText);
 }
 function shareMatchLocation(m){
  const name=canonicalField(m.field_name)||m.field_name||'CAMPO DA GIOCO';
